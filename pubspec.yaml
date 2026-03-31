@@ -1,0 +1,40 @@
+name: swipify
+description: "The Digital Curator Platform - A swipe-to-clean privacy-first app."
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.1.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # State Management
+  flutter_riverpod: ^2.5.1
+  
+  # UI & Theming
+  google_fonts: ^6.2.1
+  material_symbols_icons: ^4.2.0
+  
+  # Navigation
+  go_router: ^14.0.0
+
+  # Native Integrations for MVP
+  photo_manager: ^3.0.0
+  
+  # Swipe physics (will implement custom, but keeping hook here if needed package like appinio_swiper)
+  flutter_card_swiper: ^7.0.0
+  
+  cupertino_icons: ^1.0.6
+  photo_manager_image_provider: ^2.2.0
+  shared_preferences: ^2.5.5
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^3.0.0
+
+flutter:
+  uses-material-design: true
