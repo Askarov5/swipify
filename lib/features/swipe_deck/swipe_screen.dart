@@ -24,6 +24,9 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(swipeSessionNotifierProvider.notifier).init(widget.batch.assets);
+    });
     _swipeController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 300),
@@ -103,9 +106,13 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
                 return const Center(child: Text('Batch is empty'));
               }
 
-              final sessionState =
-                  ref.watch(swipeSessionNotifierProvider(initialAssets));
+              final sessionState = ref.watch(swipeSessionNotifierProvider);
               final cards = sessionState.remainingAssets;
+
+              if (cards.isEmpty && sessionState.keepQueue.isEmpty && sessionState.deleteQueue.isEmpty) {
+                // Not yet initialized
+                return const Center(child: CircularProgressIndicator());
+              }
 
               if (cards.isEmpty) {
                 return Center(
@@ -137,8 +144,7 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
                 );
               }
 
-              final sessionNotifier = ref
-                  .read(swipeSessionNotifierProvider(initialAssets).notifier);
+              final sessionNotifier = ref.read(swipeSessionNotifierProvider.notifier);
 
               final total = initialAssets.length;
               final progress = 1.0 - (cards.length / total);

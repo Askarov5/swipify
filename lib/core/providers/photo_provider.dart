@@ -6,13 +6,31 @@ import 'package:swipify/core/providers/preferences_provider.dart';
 
 enum GroupingMode { month, date }
 
+class GroupingModeNotifier extends Notifier<GroupingMode> {
+  @override
+  GroupingMode build() => GroupingMode.month;
+  
+  void updateMode(GroupingMode mode) {
+    state = mode;
+  }
+}
+
 final groupingModeProvider =
-    StateProvider<GroupingMode>((ref) => GroupingMode.month);
+    NotifierProvider<GroupingModeNotifier, GroupingMode>(GroupingModeNotifier.new);
 
 enum MediaTypeFilter { all, photos, videos }
 
+class MediaFilterNotifier extends Notifier<MediaTypeFilter> {
+  @override
+  MediaTypeFilter build() => MediaTypeFilter.all;
+
+  void updateFilter(MediaTypeFilter filter) {
+    state = filter;
+  }
+}
+
 final mediaFilterProvider =
-    StateProvider<MediaTypeFilter>((ref) => MediaTypeFilter.all);
+    NotifierProvider<MediaFilterNotifier, MediaTypeFilter>(MediaFilterNotifier.new);
 
 class PhotoBatch {
   final String id;
@@ -81,7 +99,7 @@ final allMediaProvider = FutureProvider<List<AssetEntity>>((ref) async {
   }
 
   final filter = ref.watch(mediaFilterProvider);
-  RequestType requestType;
+  RequestType requestType = RequestType.image | RequestType.video;
   switch (filter) {
     case MediaTypeFilter.photos:
       requestType = RequestType.image;
@@ -177,11 +195,16 @@ class SwipeSessionState {
   }
 }
 
-class SwipeSessionNotifier
-    extends AutoDisposeFamilyNotifier<SwipeSessionState, List<AssetEntity>> {
+class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
   @override
-  SwipeSessionState build(List<AssetEntity> arg) {
-    return SwipeSessionState(remainingAssets: List.from(arg));
+  SwipeSessionState build() {
+    return SwipeSessionState(remainingAssets: []);
+  }
+
+  void init(List<AssetEntity> assets) {
+    if (state.remainingAssets.isEmpty && state.keepQueue.isEmpty && state.deleteQueue.isEmpty) {
+      state = SwipeSessionState(remainingAssets: List.from(assets));
+    }
   }
 
   void keepItem(AssetEntity item) {
@@ -232,7 +255,6 @@ class SwipeSessionNotifier
   }
 }
 
-final swipeSessionNotifierProvider = NotifierProvider.autoDispose
-    .family<SwipeSessionNotifier, SwipeSessionState, List<AssetEntity>>(
+final swipeSessionNotifierProvider = NotifierProvider<SwipeSessionNotifier, SwipeSessionState>(
   SwipeSessionNotifier.new,
 );

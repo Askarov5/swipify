@@ -202,8 +202,7 @@ class LibraryReviewScreen extends ConsumerWidget {
       child: Row(
         children: [
           GestureDetector(
-            onTap: () => ref.read(groupingModeProvider.notifier).state =
-                GroupingMode.month,
+            onTap: () => ref.read(groupingModeProvider.notifier).updateMode(GroupingMode.month),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
@@ -226,8 +225,7 @@ class LibraryReviewScreen extends ConsumerWidget {
             ),
           ),
           GestureDetector(
-            onTap: () => ref.read(groupingModeProvider.notifier).state =
-                GroupingMode.date,
+            onTap: () => ref.read(groupingModeProvider.notifier).updateMode(GroupingMode.date),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
@@ -261,7 +259,7 @@ class LibraryReviewScreen extends ConsumerWidget {
       final isActive = currentFilter == filter;
       return Expanded(
         child: GestureDetector(
-          onTap: () => ref.read(mediaFilterProvider.notifier).state = filter,
+          onTap: () => ref.read(mediaFilterProvider.notifier).updateFilter(filter),
           child: Container(
             padding: const EdgeInsets.symmetric(vertical: 8),
             decoration: BoxDecoration(
