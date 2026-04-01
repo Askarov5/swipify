@@ -175,22 +175,26 @@ class SwipeSessionState {
   final List<AssetEntity> remainingAssets;
   final List<AssetEntity> keepQueue;
   final List<AssetEntity> deleteQueue;
+  final bool isCommitted;
 
   SwipeSessionState({
     required this.remainingAssets,
     this.keepQueue = const [],
     this.deleteQueue = const [],
+    this.isCommitted = false,
   });
 
   SwipeSessionState copyWith({
     List<AssetEntity>? remainingAssets,
     List<AssetEntity>? keepQueue,
     List<AssetEntity>? deleteQueue,
+    bool? isCommitted,
   }) {
     return SwipeSessionState(
       remainingAssets: remainingAssets ?? this.remainingAssets,
       keepQueue: keepQueue ?? this.keepQueue,
       deleteQueue: deleteQueue ?? this.deleteQueue,
+      isCommitted: isCommitted ?? this.isCommitted,
     );
   }
 }
@@ -214,7 +218,6 @@ class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
       ..remove(item);
     final nextKeep = List<AssetEntity>.from(state.keepQueue)..add(item);
     state = state.copyWith(remainingAssets: nextRemaining, keepQueue: nextKeep);
-    _checkCompletion(nextRemaining);
   }
 
   void deleteItem(AssetEntity item) {
@@ -223,18 +226,12 @@ class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
     final nextRemaining = List<AssetEntity>.from(state.remainingAssets)
       ..remove(item);
     final nextDelete = List<AssetEntity>.from(state.deleteQueue)..add(item);
-    state =
-        state.copyWith(remainingAssets: nextRemaining, deleteQueue: nextDelete);
-    _checkCompletion(nextRemaining);
-  }
-
-  void _checkCompletion(List<AssetEntity> remaining) {
-    if (remaining.isEmpty) {
-      commitSession();
-    }
+    state = state.copyWith(remainingAssets: nextRemaining, deleteQueue: nextDelete);
   }
 
   Future<void> commitSession() async {
+    if (state.isCommitted) return;
+    
     final keepIds = state.keepQueue.map((e) => e.id).toList();
     final deleteIds = state.deleteQueue.map((e) => e.id).toList();
 
@@ -252,6 +249,8 @@ class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
         debugPrint("Error deleting items: $e");
       }
     }
+    
+    state = state.copyWith(isCommitted: true);
   }
 }
 
