@@ -1,0 +1,116 @@
+
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
+
+/// Lightweight representation of a photo provided natively.
+class SwipifyPhoto {
+  final String id;
+  final DateTime creationTime;
+
+  SwipifyPhoto({required this.id, required this.creationTime});
+
+  /// Dynamically gets the thumbnail by calling the native channel
+  Future<Uint8List?> get thumbnailData async {
+    return await NativeGalleryHelper.fetchThumbnail(id, width: 300, height: 300);
+  }
+
+  /// Dynamically gets the high resolution file bytes
+  Future<Uint8List?> get fileData async {
+    return await NativeGalleryHelper.fetchFile(id);
+  }
+}
+
+/// A bulletproof custom service replacing photo_manager.
+/// Manages permissions, metadata extraction, and deletions directly via iOS/macOS PHPhotoLibrary.
+class NativeGalleryHelper {
+  static const _channel = MethodChannel('com.swipify/gallery');
+
+  /// Fetches lightweight metadata shell for all images natively
+  static Future<List<SwipifyPhoto>> fetchLibraryMetadata() async {
+    try {
+      final List<dynamic>? results = await _channel.invokeMethod('fetchLibraryMetadata');
+      if (results == null) return [];
+      
+      return results.map((e) {
+        final map = e as Map<dynamic, dynamic>;
+        return SwipifyPhoto(
+          id: map['id'] as String,
+          creationTime: DateTime.fromMillisecondsSinceEpoch(map['creationTime'] as int),
+        );
+      }).toList();
+    } catch (e) {
+      debugPrint('Metadata fetch error: $e');
+      return [];
+    }
+  }
+
+  /// Fetch compressed thumbnail byte data specifically for Grid rendering
+  static Future<Uint8List?> fetchThumbnail(String id, {double width = 300, double height = 300}) async {
+    try {
+      return await _channel.invokeMethod<Uint8List>('fetchThumbnail', {
+        'id': id,
+        'width': width,
+        'height': height,
+      });
+    } catch (e) {
+      debugPrint('Thumbnail fetch error: $e');
+      return null;
+    }
+  }
+
+  /// Fetch high quality byte data for Swipe Screen
+  static Future<Uint8List?> fetchFile(String id) async {
+    try {
+      return await _channel.invokeMethod<Uint8List>('fetchFile', {'id': id});
+    } catch (e) {
+      debugPrint('File fetch error: $e');
+      return null;
+    }
+  }
+
+  /// Deletes a list of photos using native prompt APIs
+  static Future<bool> deletePhotos(List<String> ids) async {
+    try {
+      final result = await _channel.invokeMethod<bool>('deletePhotos', {'ids': ids});
+      return result ?? false;
+    } catch (e) {
+      debugPrint('Delete error: $e');
+      return false;
+    }
+  }
+
+  // --- PERMISSIONS ENDPOINT ---
+
+  static Future<String> requestPermission() async {
+    try {
+      final result = await _channel.invokeMethod<String>('requestPermission');
+      return result ?? 'notDetermined';
+    } catch (e) {
+      debugPrint('Permission request error: $e');
+      return 'notDetermined';
+    }
+  }
+
+  static Future<String> checkPermission() async {
+    try {
+      final result = await _channel.invokeMethod<String>('checkPermission');
+      return result ?? 'notDetermined';
+    } catch (e) {
+      debugPrint('Check permission error: $e');
+      return 'notDetermined';
+    }
+  }
+
+  static Future<bool> openSettings() async {
+    try {
+      final result = await _channel.invokeMethod<bool>('openSettings');
+      return result ?? false;
+    } catch (e) {
+      debugPrint('Open settings error: $e');
+      return false;
+    }
+  }
+
+  static bool isGranted(String status) => status == 'authorized' || status == 'limited';
+  static bool isDenied(String status) => status == 'denied' || status == 'restricted';
+}

@@ -1,10 +1,9 @@
 import 'dart:ui';
+import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:photo_manager/photo_manager.dart';
-import 'package:video_player/video_player.dart';
-import 'package:photo_manager_image_provider/photo_manager_image_provider.dart';
 import '../../core/theme.dart';
+import '../../core/native_gallery_helper.dart';
 import '../../core/providers/photo_provider.dart';
 
 class SwipeScreen extends ConsumerStatefulWidget {
@@ -57,7 +56,7 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
   }
 
   void _onPanEnd(DragEndDetails details, SwipeSessionNotifier session,
-      AssetEntity frontCard) {
+      SwipifyPhoto frontCard) {
     setState(() => _isDragging = false);
 
     final screenWidth = MediaQuery.of(context).size.width;
@@ -187,7 +186,7 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
                     alignment: Alignment.center,
                     children: cards.asMap().entries.map((entry) {
                       int index = entry.key;
-                      AssetEntity asset = entry.value;
+                      SwipifyPhoto asset = entry.value;
                       bool isFrontCard = index == cards.length - 1;
 
                       Widget card = Hero(
@@ -239,7 +238,7 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
                                         Text(
-                                          asset.title ?? 'Media ${asset.id}',
+                                          'Photo ${asset.id.split('/').last}',
                                           style: const TextStyle(
                                               fontWeight: FontWeight.bold,
                                               fontSize: 16,
@@ -248,7 +247,7 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
                                           overflow: TextOverflow.ellipsis,
                                         ),
                                         Text(
-                                          '${asset.width}x${asset.height} • ${asset.createDateTime.toString().split(' ')[0]}',
+                                          asset.creationTime.toLocal().toString().split('.')[0],
                                           style: TextStyle(
                                               fontSize: 12,
                                               color: Colors.white.withValues(alpha: 0.7)),
@@ -399,8 +398,8 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
   }
 }
 
-class SwipifyMediaWidget extends StatefulWidget {
-  final AssetEntity asset;
+class SwipifyMediaWidget extends StatelessWidget {
+  final SwipifyPhoto asset;
   final bool isFrontCard;
 
   const SwipifyMediaWidget({
@@ -410,112 +409,25 @@ class SwipifyMediaWidget extends StatefulWidget {
   });
 
   @override
-  State<SwipifyMediaWidget> createState() => _SwipifyMediaWidgetState();
-}
-
-class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
-  VideoPlayerController? _videoController;
-  bool _isMuted = true;
-  bool _initialized = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _initMedia();
-  }
-
-  Future<void> _initMedia() async {
-    if (widget.asset.type == AssetType.video) {
-      final file = await widget.asset.file;
-      if (file != null) {
-        _videoController = VideoPlayerController.file(file);
-        await _videoController!.initialize();
-        await _videoController!.setVolume(0.0);
-        await _videoController!.setLooping(true);
-        if (mounted) {
-          setState(() {
-            _initialized = true;
-          });
-          if (widget.isFrontCard) {
-            _videoController!.play();
-          }
-        }
-      }
-    }
-  }
-
-  @override
-  void didUpdateWidget(SwipifyMediaWidget oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (widget.asset.type == AssetType.video && _videoController != null) {
-      if (widget.isFrontCard && !oldWidget.isFrontCard) {
-        _videoController!.play();
-      } else if (!widget.isFrontCard && oldWidget.isFrontCard) {
-        _videoController!.pause();
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _videoController?.dispose();
-    super.dispose();
-  }
-
-  void _toggleMute() {
-    if (_videoController == null) return;
-    setState(() {
-      _isMuted = !_isMuted;
-      _videoController!.setVolume(_isMuted ? 0.0 : 1.0);
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
-    if (widget.asset.type == AssetType.image) {
-      return AssetEntityImage(
-        widget.asset,
-        isOriginal: false,
-        thumbnailSize: const ThumbnailSize.square(800),
-        fit: BoxFit.cover,
-      );
-    } else if (widget.asset.type == AssetType.video) {
-      if (!_initialized || _videoController == null) {
-        return const Center(child: CircularProgressIndicator());
-      }
-      return Stack(
-        fit: StackFit.expand,
-        children: [
-          FittedBox(
-            fit: BoxFit.cover,
-            child: SizedBox(
-              width: _videoController!.value.size.width,
-              height: _videoController!.value.size.height,
-              child: VideoPlayer(_videoController!),
-            ),
-          ),
-          SafeArea(
-            child: Align(
-              alignment: Alignment.topRight,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 80, right: 16), // Below Appbar
-                child: IconButton(
-                  icon: Icon(
-                    _isMuted ? Icons.volume_off : Icons.volume_up,
-                    color: Colors.white,
-                  ),
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.black45,
-                  ),
-                  onPressed: _toggleMute,
-                ),
-              ),
-            ),
-          ),
-        ],
-      );
-    } else {
-      return const Center(child: Icon(Icons.error));
-    }
+    // If it's the front card, load the high-res file data natively
+    // If it's a back card, load the lighter thumbnail to save memory
+    return FutureBuilder<Uint8List?>(
+      future: isFrontCard ? asset.fileData : asset.thumbnailData,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError || !snapshot.hasData || snapshot.data == null) {
+          return const Center(child: Icon(Icons.broken_image, size: 64, color: Colors.grey));
+        }
+
+        return Image.memory(
+          snapshot.data!,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+        );
+      },
+    );
   }
 }

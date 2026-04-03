@@ -2,18 +2,18 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'core/theme.dart';
+import 'core/native_gallery_helper.dart';
 import 'core/providers/preferences_provider.dart';
 import 'features/permissions/onboarding_screen.dart';
 import 'features/library/library_review_screen.dart';
-import 'core/photo_permission_helper.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
 
   // Check permission state synchronously at boot
-  final permissionStatus = await PhotoPermissionHelper.checkPermission();
-  final isGranted = PhotoPermissionHelper.isGranted(permissionStatus);
+  final permissionStatus = await NativeGalleryHelper.checkPermission();
+  final isGranted = NativeGalleryHelper.isGranted(permissionStatus);
 
   runApp(
     ProviderScope(

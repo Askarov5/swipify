@@ -6,7 +6,7 @@ import 'package:swipify/main.dart';
 void main() {
   testWidgets('App smoke test', (WidgetTester tester) async {
     // Build our app and trigger a frame.
-    await tester.pumpWidget(const ProviderScope(child: SwipifyApp()));
+    await tester.pumpWidget(const ProviderScope(child: SwipifyApp(initialRouteIsLibrary: false)));
 
     // Verify that the app builds without crashing.
     expect(find.byType(SwipifyApp), findsOneWidget);

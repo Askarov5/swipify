@@ -4,10 +4,9 @@ import '../../core/theme.dart';
 import '../swipe_deck/swipe_screen.dart';
 import '../dashboard/stats_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:photo_manager/photo_manager.dart';
 import '../../core/providers/photo_provider.dart';
 import '../../core/providers/preferences_provider.dart';
-import '../../core/photo_permission_helper.dart';
+import '../../core/native_gallery_helper.dart';
 
 class LibraryReviewScreen extends ConsumerWidget {
   const LibraryReviewScreen({super.key});
@@ -49,7 +48,7 @@ class LibraryReviewScreen extends ConsumerWidget {
       body: SafeArea(
         child: ref.watch(photoPermissionProvider).when(
               data: (permission) {
-                if (!PhotoPermissionHelper.isGranted(permission)) {
+                if (!NativeGalleryHelper.isGranted(permission)) {
                   return _buildPermissionRequired(context);
                 }
                 return _buildLibraryContent(context, ref);
@@ -109,7 +108,7 @@ class LibraryReviewScreen extends ConsumerWidget {
                   ),
                   elevation: 8,
                 ),
-                onPressed: () => PhotoPermissionHelper.openSettings(),
+                onPressed: () => NativeGalleryHelper.openSettings(),
                 icon: const Icon(Icons.settings),
                 label: const Text(
                   'Open Settings',

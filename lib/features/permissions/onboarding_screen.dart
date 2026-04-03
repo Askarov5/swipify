@@ -1,15 +1,22 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
-import '../../core/photo_permission_helper.dart';
+import '../../core/native_gallery_helper.dart';
 import '../library/library_review_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-class OnboardingScreen extends ConsumerWidget {
+class OnboardingScreen extends ConsumerStatefulWidget {
   const OnboardingScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<OnboardingScreen> createState() => _OnboardingScreenState();
+}
+
+class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
+  bool _isLoading = false;
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       body: Stack(
         children: [
@@ -158,14 +165,14 @@ class OnboardingScreen extends ConsumerWidget {
                                   ),
                                   elevation: 8,
                                 ),
-                                onPressed: () async {
+                                onPressed: _isLoading ? null : () async {
                                   // 1. Check current permission status
                                   final currentStatus =
-                                      await PhotoPermissionHelper
+                                      await NativeGalleryHelper
                                           .checkPermission();
 
                                   // 2. Already authorized → go to library
-                                  if (PhotoPermissionHelper
+                                  if (NativeGalleryHelper
                                       .isGranted(currentStatus)) {
                                     if (context.mounted) {
                                       Navigator.pushReplacement(
@@ -179,7 +186,7 @@ class OnboardingScreen extends ConsumerWidget {
                                   }
 
                                   // 3. Previously denied → send to Settings
-                                  if (PhotoPermissionHelper
+                                  if (NativeGalleryHelper
                                       .isDenied(currentStatus)) {
                                     if (context.mounted) {
                                       _showSettingsDialog(context);
@@ -189,12 +196,12 @@ class OnboardingScreen extends ConsumerWidget {
 
                                   // 4. Not determined → request permission
                                   //    (triggers the system permission dialog)
-                                  final newStatus =
-                                      await PhotoPermissionHelper
-                                          .requestPermission();
+                                  setState(() { _isLoading = true; });
+                                  final status = await NativeGalleryHelper.requestPermission();
+                                  
                                   if (context.mounted) {
-                                    if (PhotoPermissionHelper
-                                        .isGranted(newStatus)) {
+                                    setState(() { _isLoading = false; });
+                                    if (NativeGalleryHelper.isGranted(status)) {
                                       Navigator.pushReplacement(
                                         context,
                                         MaterialPageRoute(
@@ -282,7 +289,7 @@ class OnboardingScreen extends ConsumerWidget {
             ),
             onPressed: () {
               Navigator.pop(context);
-              PhotoPermissionHelper.openSettings();
+              NativeGalleryHelper.openSettings();
             },
             child: const Text('Open Settings'),
           ),

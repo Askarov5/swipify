@@ -1,9 +1,8 @@
 import 'package:flutter/foundation.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:photo_manager/photo_manager.dart';
+import 'package:swipify/core/native_gallery_helper.dart';
 import 'package:swipify/core/providers/preferences_provider.dart';
-import 'package:swipify/core/photo_permission_helper.dart';
 
 enum GroupingMode { month, date }
 
@@ -36,7 +35,7 @@ final mediaFilterProvider =
 class PhotoBatch {
   final String id;
   final String title;
-  final List<AssetEntity> assets;
+  final List<SwipifyPhoto> assets;
   final List<String> allAssetIds;
   final int totalCount;
   final int reviewedCount;
@@ -90,44 +89,16 @@ String _formatDate(DateTime date) {
 }
 
 final photoPermissionProvider = FutureProvider<String>((ref) async {
-  return await PhotoPermissionHelper.requestPermission();
+  return await NativeGalleryHelper.requestPermission();
 });
 
-final allMediaProvider = FutureProvider<List<AssetEntity>>((ref) async {
+final allMediaProvider = FutureProvider<List<SwipifyPhoto>>((ref) async {
   final permission = await ref.watch(photoPermissionProvider.future);
-  if (!PhotoPermissionHelper.isGranted(permission)) {
+  if (!NativeGalleryHelper.isGranted(permission)) {
     return [];
   }
 
-  final filter = ref.watch(mediaFilterProvider);
-  RequestType requestType = RequestType.image | RequestType.video;
-  switch (filter) {
-    case MediaTypeFilter.photos:
-      requestType = RequestType.image;
-      break;
-    case MediaTypeFilter.videos:
-      requestType = RequestType.video;
-      break;
-    case MediaTypeFilter.all:
-      requestType = RequestType.image | RequestType.video;
-      break;
-  }
-
-  // Get all paths
-  final paths = await PhotoManager.getAssetPathList(
-    onlyAll: true,
-    type: requestType,
-  );
-
-  if (paths.isEmpty) return [];
-
-  final recentAlbum = paths.first;
-  final count = await recentAlbum.assetCountAsync;
-
-  // Fetch ALL metadata shells (AssetEntity).
-  // Native PhotoManager executes this seamlessly for 15,000+ items typically under 200ms
-  // because it strictly defers heavy image bytes/thumbnails until the SwipeScreen explicitly requests them.
-  return await recentAlbum.getAssetListRange(start: 0, end: count);
+  return await NativeGalleryHelper.fetchLibraryMetadata();
 });
 
 final batchedMediaProvider = Provider<AsyncValue<List<PhotoBatch>>>((ref) {
@@ -136,18 +107,15 @@ final batchedMediaProvider = Provider<AsyncValue<List<PhotoBatch>>>((ref) {
   final reviewedIds = ref.watch(reviewedIdsProvider);
 
   return allMediaAsync.whenData((assets) {
-    // Group ALL assets sequentially via createDateTime to establish the full batch count
-    // PhotoManager returns descending order (latest first)
-    final grouped = <String, List<AssetEntity>>{};
+    final grouped = <String, List<SwipifyPhoto>>{};
     for (final asset in assets) {
-      final date = asset.createDateTime;
+      final date = asset.creationTime;
       final key = groupingMode == GroupingMode.month
           ? _formatMonth(date)
           : _formatDate(date);
       grouped.putIfAbsent(key, () => []).add(asset);
     }
 
-    // Convert to batches list
     final batches = grouped.entries.map((e) {
       final allBatchAssets = e.value;
       final unreviewedAssets = allBatchAssets
@@ -174,9 +142,9 @@ final batchedMediaProvider = Provider<AsyncValue<List<PhotoBatch>>>((ref) {
 });
 
 class SwipeSessionState {
-  final List<AssetEntity> remainingAssets;
-  final List<AssetEntity> keepQueue;
-  final List<AssetEntity> deleteQueue;
+  final List<SwipifyPhoto> remainingAssets;
+  final List<SwipifyPhoto> keepQueue;
+  final List<SwipifyPhoto> deleteQueue;
   final bool isCommitted;
 
   SwipeSessionState({
@@ -187,9 +155,9 @@ class SwipeSessionState {
   });
 
   SwipeSessionState copyWith({
-    List<AssetEntity>? remainingAssets,
-    List<AssetEntity>? keepQueue,
-    List<AssetEntity>? deleteQueue,
+    List<SwipifyPhoto>? remainingAssets,
+    List<SwipifyPhoto>? keepQueue,
+    List<SwipifyPhoto>? deleteQueue,
     bool? isCommitted,
   }) {
     return SwipeSessionState(
@@ -207,27 +175,27 @@ class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
     return SwipeSessionState(remainingAssets: []);
   }
 
-  void init(List<AssetEntity> assets) {
+  void init(List<SwipifyPhoto> assets) {
     if (state.remainingAssets.isEmpty && state.keepQueue.isEmpty && state.deleteQueue.isEmpty) {
       state = SwipeSessionState(remainingAssets: List.from(assets));
     }
   }
 
-  void keepItem(AssetEntity item) {
+  void keepItem(SwipifyPhoto item) {
     if (!state.remainingAssets.contains(item)) return;
 
-    final nextRemaining = List<AssetEntity>.from(state.remainingAssets)
+    final nextRemaining = List<SwipifyPhoto>.from(state.remainingAssets)
       ..remove(item);
-    final nextKeep = List<AssetEntity>.from(state.keepQueue)..add(item);
+    final nextKeep = List<SwipifyPhoto>.from(state.keepQueue)..add(item);
     state = state.copyWith(remainingAssets: nextRemaining, keepQueue: nextKeep);
   }
 
-  void deleteItem(AssetEntity item) {
+  void deleteItem(SwipifyPhoto item) {
     if (!state.remainingAssets.contains(item)) return;
 
-    final nextRemaining = List<AssetEntity>.from(state.remainingAssets)
+    final nextRemaining = List<SwipifyPhoto>.from(state.remainingAssets)
       ..remove(item);
-    final nextDelete = List<AssetEntity>.from(state.deleteQueue)..add(item);
+    final nextDelete = List<SwipifyPhoto>.from(state.deleteQueue)..add(item);
     state = state.copyWith(remainingAssets: nextRemaining, deleteQueue: nextDelete);
   }
 
@@ -237,15 +205,13 @@ class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
     final keepIds = state.keepQueue.map((e) => e.id).toList();
     final deleteIds = state.deleteQueue.map((e) => e.id).toList();
 
-    // Register keepers immediately
     ref.read(reviewedIdsProvider.notifier).addIds(keepIds);
 
     if (deleteIds.isNotEmpty) {
       try {
-        final deletedIds = await PhotoManager.editor.deleteWithIds(deleteIds);
-        if (deletedIds.isNotEmpty) {
-          // If the user accepts deletion, we log them as reviewed/deleted
-          ref.read(reviewedIdsProvider.notifier).addIds(deletedIds);
+        final success = await NativeGalleryHelper.deletePhotos(deleteIds);
+        if (success) {
+          ref.read(reviewedIdsProvider.notifier).addIds(deleteIds);
         }
       } catch (e) {
         debugPrint("Error deleting items: $e");

@@ -22,13 +22,11 @@ dependencies:
   go_router: ^17.1.0
 
   # Native Integrations for MVP
-  photo_manager: ^3.0.0
   
   # Swipe physics (will implement custom, but keeping hook here if needed package like appinio_swiper)
   flutter_card_swiper: ^7.0.0
   
   cupertino_icons: ^1.0.6
-  photo_manager_image_provider: ^2.2.0
   shared_preferences: ^2.5.5
   video_player: ^2.11.1
 

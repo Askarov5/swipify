@@ -9,24 +9,23 @@ import Photos
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
     GeneratedPluginRegistrant.register(with: self)
-    // Register our custom photo permission plugin natively on the primary AppDelegate
-    PhotoPermissionPlugin.register(
-      with: self.registrar(forPlugin: "PhotoPermissionPlugin")!
+    // Register our custom zero-dependency Native Gallery Service
+    SwipifyGalleryService.register(
+      with: self.registrar(forPlugin: "SwipifyGalleryService")!
     )
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 }
 
-/// Custom native plugin for photo library permissions.
-/// Directly calls PHPhotoLibrary APIs, bypassing photo_manager's method channel
-/// which has compatibility issues with FlutterImplicitEngineDelegate.
-class PhotoPermissionPlugin: NSObject, FlutterPlugin {
+/// Custom unified native plugin replacing photo_manager.
+/// Manages permissions, metadata queries, and media extraction natively via PHPhotoLibrary.
+class SwipifyGalleryService: NSObject, FlutterPlugin {
   static func register(with registrar: FlutterPluginRegistrar) {
     let channel = FlutterMethodChannel(
-      name: "com.swipify/photo_permission",
+      name: "com.swipify/gallery",
       binaryMessenger: registrar.messenger()
     )
-    let instance = PhotoPermissionPlugin()
+    let instance = SwipifyGalleryService()
     registrar.addMethodCallDelegate(instance, channel: channel)
   }
 
@@ -38,8 +37,118 @@ class PhotoPermissionPlugin: NSObject, FlutterPlugin {
       checkPhotoPermission(result: result)
     case "openSettings":
       openSettings(result: result)
+    case "fetchLibraryMetadata":
+      fetchLibraryMetadata(result: result)
+    case "fetchThumbnail":
+      fetchThumbnail(call: call, result: result)
+    case "fetchFile":
+      fetchFile(call: call, result: result)
+    case "deletePhotos":
+      deletePhotos(call: call, result: result)
     default:
       result(FlutterMethodNotImplemented)
+    }
+  }
+
+  private func fetchLibraryMetadata(result: @escaping FlutterResult) {
+    DispatchQueue.global(qos: .userInitiated).async {
+      let fetchOptions = PHFetchOptions()
+      fetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
+      let assets = PHAsset.fetchAssets(with: .image, options: fetchOptions)
+      
+      var metadataList: [[String: Any]] = []
+      metadataList.reserveCapacity(assets.count)
+      
+      assets.enumerateObjects { (asset, index, stop) in
+        if let creationDate = asset.creationDate {
+          metadataList.append([
+            "id": asset.localIdentifier,
+            "creationTime": Int(creationDate.timeIntervalSince1970 * 1000)
+          ])
+        }
+      }
+      
+      DispatchQueue.main.async { result(metadataList) }
+    }
+  }
+
+  private func fetchThumbnail(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let args = call.arguments as? [String: Any], let id = args["id"] as? String else {
+      result(FlutterError(code: "INVALID_ARGUMENT", message: "id is required", details: nil))
+      return
+    }
+    
+    let width = args["width"] as? CGFloat ?? 300
+    let height = args["height"] as? CGFloat ?? 300
+    
+    DispatchQueue.global(qos: .userInitiated).async {
+      let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil)
+      guard let asset = fetchResult.firstObject else {
+        DispatchQueue.main.async { result(nil) }
+        return
+      }
+      
+      let options = PHImageRequestOptions()
+      options.isSynchronous = true
+      options.deliveryMode = .fastFormat
+      options.isNetworkAccessAllowed = true
+      
+      PHImageManager.default().requestImage(for: asset, targetSize: CGSize(width: width, height: height), contentMode: .aspectFill, options: options) { image, _ in
+        if let image = image, let data = image.jpegData(compressionQuality: 0.7) {
+          DispatchQueue.main.async { result(FlutterStandardTypedData(bytes: data)) }
+        } else {
+          DispatchQueue.main.async { result(nil) }
+        }
+      }
+    }
+  }
+
+  private func fetchFile(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let args = call.arguments as? [String: Any], let id = args["id"] as? String else {
+      result(FlutterError(code: "INVALID_ARGUMENT", message: "id is required", details: nil))
+      return
+    }
+    
+    DispatchQueue.global(qos: .userInitiated).async {
+      let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil)
+      guard let asset = fetchResult.firstObject else {
+        DispatchQueue.main.async { result(nil) }
+        return
+      }
+      
+      let options = PHImageRequestOptions()
+      options.isSynchronous = true
+      options.deliveryMode = .highQualityFormat
+      options.isNetworkAccessAllowed = true
+      
+      PHImageManager.default().requestImage(for: asset, targetSize: PHImageManagerMaximumSize, contentMode: .aspectFit, options: options) { image, _ in
+        if let image = image, let data = image.jpegData(compressionQuality: 0.9) {
+          DispatchQueue.main.async { result(FlutterStandardTypedData(bytes: data)) }
+        } else {
+          DispatchQueue.main.async { result(nil) }
+        }
+      }
+    }
+  }
+
+  private func deletePhotos(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let args = call.arguments as? [String: Any], let ids = args["ids"] as? [String] else {
+      result(FlutterError(code: "INVALID_ARGUMENT", message: "ids is required", details: nil))
+      return
+    }
+    
+    let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: ids, options: nil)
+    guard fetchResult.count > 0 else {
+      result(true)
+      return
+    }
+    
+    PHPhotoLibrary.shared().performChanges({
+      var assets: [PHAsset] = []
+      fetchResult.enumerateObjects { (asset, _, _) in assets.append(asset) }
+      PHAssetChangeRequest.deleteAssets(assets as NSArray)
+    }) { success, _ in
+      DispatchQueue.main.async { result(success) }
     }
   }
 
