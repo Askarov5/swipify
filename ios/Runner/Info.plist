@@ -26,6 +26,8 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Swipify needs access to your photo library to help you declutter and sort your photos.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
@@ -40,7 +42,7 @@
 					<key>UISceneConfigurationName</key>
 					<string>flutter</string>
 					<key>UISceneDelegateClassName</key>
-					<string>$(PRODUCT_MODULE_NAME).SceneDelegate</string>
+					<string>FlutterSceneDelegate</string>
 					<key>UISceneStoryboardFile</key>
 					<string>Main</string>
 				</dict>
@@ -66,7 +68,5 @@
 		<string>UIInterfaceOrientationLandscapeLeft</string>
 		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
-	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Swipify needs access to your photo library to help you declutter and sort your photos.</string>
 </dict>
 </plist>

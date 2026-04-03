@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:photo_manager/photo_manager.dart';
 import 'package:swipify/core/providers/preferences_provider.dart';
+import 'package:swipify/core/photo_permission_helper.dart';
 
 enum GroupingMode { month, date }
 
@@ -88,13 +89,13 @@ String _formatDate(DateTime date) {
   return '${months[date.month - 1]} ${date.day}, ${date.year}';
 }
 
-final photoPermissionProvider = FutureProvider<PermissionState>((ref) async {
-  return await PhotoManager.requestPermissionExtend();
+final photoPermissionProvider = FutureProvider<String>((ref) async {
+  return await PhotoPermissionHelper.requestPermission();
 });
 
 final allMediaProvider = FutureProvider<List<AssetEntity>>((ref) async {
   final permission = await ref.watch(photoPermissionProvider.future);
-  if (!permission.hasAccess) {
+  if (!PhotoPermissionHelper.isGranted(permission)) {
     return [];
   }
 

@@ -1,9 +1,9 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
+import '../../core/photo_permission_helper.dart';
 import '../library/library_review_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:photo_manager/photo_manager.dart';
 
 class OnboardingScreen extends ConsumerWidget {
   const OnboardingScreen({super.key});
@@ -159,15 +159,52 @@ class OnboardingScreen extends ConsumerWidget {
                                   elevation: 8,
                                 ),
                                 onPressed: () async {
-                                  // Request permissions
-                                  await PhotoManager.requestPermissionExtend();
+                                  // 1. Check current permission status
+                                  final currentStatus =
+                                      await PhotoPermissionHelper
+                                          .checkPermission();
+
+                                  // 2. Already authorized → go to library
+                                  if (PhotoPermissionHelper
+                                      .isGranted(currentStatus)) {
+                                    if (context.mounted) {
+                                      Navigator.pushReplacement(
+                                        context,
+                                        MaterialPageRoute(
+                                            builder: (context) =>
+                                                const LibraryReviewScreen()),
+                                      );
+                                    }
+                                    return;
+                                  }
+
+                                  // 3. Previously denied → send to Settings
+                                  if (PhotoPermissionHelper
+                                      .isDenied(currentStatus)) {
+                                    if (context.mounted) {
+                                      _showSettingsDialog(context);
+                                    }
+                                    return;
+                                  }
+
+                                  // 4. Not determined → request permission
+                                  //    (triggers the system permission dialog)
+                                  final newStatus =
+                                      await PhotoPermissionHelper
+                                          .requestPermission();
                                   if (context.mounted) {
-                                    Navigator.pushReplacement(
-                                      context,
-                                      MaterialPageRoute(
-                                          builder: (context) =>
-                                              const LibraryReviewScreen()),
-                                    );
+                                    if (PhotoPermissionHelper
+                                        .isGranted(newStatus)) {
+                                      Navigator.pushReplacement(
+                                        context,
+                                        MaterialPageRoute(
+                                            builder: (context) =>
+                                                const LibraryReviewScreen()),
+                                      );
+                                    } else {
+                                      // User denied the dialog → show Settings prompt
+                                      _showSettingsDialog(context);
+                                    }
                                   }
                                 },
                                 child: Text(
@@ -205,6 +242,49 @@ class OnboardingScreen extends ConsumerWidget {
                 ),
               ],
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static void _showSettingsDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: SwipifyTheme.surfaceContainerLow,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.photo_library, color: SwipifyTheme.primary),
+            SizedBox(width: 12),
+            Text('Photo Access Required'),
+          ],
+        ),
+        content: const Text(
+          'Swipify needs access to your photo library to help you review and declutter your photos.\n\n'
+          'Please open Settings and grant photo library access to continue.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: SwipifyTheme.primary,
+              foregroundColor: SwipifyTheme.onPrimary,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            onPressed: () {
+              Navigator.pop(context);
+              PhotoPermissionHelper.openSettings();
+            },
+            child: const Text('Open Settings'),
           ),
         ],
       ),

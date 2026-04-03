@@ -28,5 +28,9 @@
 	<string>MainMenu</string>
 	<key>NSPrincipalClass</key>
 	<string>NSApplication</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Swipify needs access to your photo library to help you review and declutter your photos and videos.</string>
+	<key>FLTEnableMergedPlatformUIThread</key>
+	<false/>
 </dict>
 </plist>
