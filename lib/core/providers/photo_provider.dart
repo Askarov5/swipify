@@ -98,7 +98,15 @@ final allMediaProvider = FutureProvider<List<SwipifyPhoto>>((ref) async {
     return [];
   }
 
-  return await NativeGalleryHelper.fetchLibraryMetadata();
+  final metadata = await NativeGalleryHelper.fetchLibraryMetadata();
+  final filter = ref.watch(mediaFilterProvider);
+  
+  if (filter == MediaTypeFilter.photos) {
+    return metadata.where((e) => !e.isVideo).toList();
+  } else if (filter == MediaTypeFilter.videos) {
+    return metadata.where((e) => e.isVideo).toList();
+  }
+  return metadata;
 });
 
 final batchedMediaProvider = Provider<AsyncValue<List<PhotoBatch>>>((ref) {
@@ -176,9 +184,7 @@ class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
   }
 
   void init(List<SwipifyPhoto> assets) {
-    if (state.remainingAssets.isEmpty && state.keepQueue.isEmpty && state.deleteQueue.isEmpty) {
-      state = SwipeSessionState(remainingAssets: List.from(assets));
-    }
+    state = SwipeSessionState(remainingAssets: List.from(assets));
   }
 
   void keepItem(SwipifyPhoto item) {
@@ -212,6 +218,7 @@ class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
         final success = await NativeGalleryHelper.deletePhotos(deleteIds);
         if (success) {
           ref.read(reviewedIdsProvider.notifier).addIds(deleteIds);
+          ref.invalidate(allMediaProvider);
         }
       } catch (e) {
         debugPrint("Error deleting items: $e");

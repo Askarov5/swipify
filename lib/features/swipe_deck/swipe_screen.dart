@@ -1,7 +1,9 @@
 import 'dart:ui';
+import 'dart:io';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:video_player/video_player.dart';
 import '../../core/theme.dart';
 import '../../core/native_gallery_helper.dart';
 import '../../core/providers/photo_provider.dart';
@@ -214,6 +216,7 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
                               fit: StackFit.expand,
                               children: [
                                 SwipifyMediaWidget(
+                                  key: ValueKey(asset.id),
                                   asset: asset,
                                   isFrontCard: isFrontCard,
                                 ),
@@ -360,7 +363,7 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
                                     onPressed: () {
                                       sessionNotifier.deleteItem(cards.last);
                                     },
-                                    icon: const Icon(Icons.close, color: SwipifyTheme.secondary, size: 32),
+                                    icon: const Icon(Icons.delete, color: SwipifyTheme.secondary, size: 32),
                                     style: IconButton.styleFrom(
                                       backgroundColor: SwipifyTheme.secondaryContainer.withValues(alpha: 0.3),
                                       padding: const EdgeInsets.all(16),
@@ -374,7 +377,7 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
                                     onPressed: () {
                                       sessionNotifier.keepItem(cards.last);
                                     },
-                                    icon: const Icon(Icons.favorite, color: SwipifyTheme.primary, size: 32),
+                                    icon: const Icon(Icons.skip_next, color: SwipifyTheme.primary, size: 32),
                                     style: IconButton.styleFrom(
                                       backgroundColor: SwipifyTheme.primaryContainer.withValues(alpha: 0.3),
                                       padding: const EdgeInsets.all(16),
@@ -398,7 +401,7 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
   }
 }
 
-class SwipifyMediaWidget extends StatelessWidget {
+class SwipifyMediaWidget extends StatefulWidget {
   final SwipifyPhoto asset;
   final bool isFrontCard;
 
@@ -409,11 +412,130 @@ class SwipifyMediaWidget extends StatelessWidget {
   });
 
   @override
+  State<SwipifyMediaWidget> createState() => _SwipifyMediaWidgetState();
+}
+
+class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
+  VideoPlayerController? _videoController;
+  bool _isMuted = true;
+  bool _initialized = false;
+  
+  Future<Uint8List?>? _imageFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.asset.isVideo) {
+      _initVideo();
+    } else {
+      _imageFuture = widget.asset.fileData;
+    }
+  }
+
+  Future<void> _initVideo() async {
+    final path = await NativeGalleryHelper.fetchFilePath(widget.asset.id);
+    if (path != null && mounted) {
+      _videoController = VideoPlayerController.file(File(path));
+      await _videoController!.initialize();
+      await _videoController!.setVolume(0.0);
+      await _videoController!.setLooping(true);
+      if (mounted) {
+        setState(() {
+          _initialized = true;
+        });
+        if (widget.isFrontCard) {
+          _videoController!.play();
+        }
+      }
+    }
+  }
+
+  @override
+  void didUpdateWidget(SwipifyMediaWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    
+    // Safely refresh completely if a completely different asset was injected into this exact positional widget state
+    if (widget.asset.id != oldWidget.asset.id) {
+      if (widget.asset.isVideo) {
+        _videoController?.dispose();
+        _videoController = null;
+        _initialized = false;
+        _initVideo();
+      } else {
+        _videoController?.dispose();
+        _videoController = null;
+        setState(() {
+          _imageFuture = widget.asset.fileData;
+        });
+      }
+      return;
+    }
+
+    if (widget.asset.isVideo && _videoController != null) {
+      if (widget.isFrontCard && !oldWidget.isFrontCard) {
+        _videoController!.play();
+      } else if (!widget.isFrontCard && oldWidget.isFrontCard) {
+        _videoController!.pause();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _videoController?.dispose();
+    super.dispose();
+  }
+
+  void _toggleMute() {
+    if (_videoController == null) return;
+    setState(() {
+      _isMuted = !_isMuted;
+      _videoController!.setVolume(_isMuted ? 0.0 : 1.0);
+    });
+  }
+
+  @override
   Widget build(BuildContext context) {
-    // If it's the front card, load the high-res file data natively
-    // If it's a back card, load the lighter thumbnail to save memory
+    if (widget.asset.isVideo) {
+      if (!_initialized || _videoController == null) {
+        return const Center(child: CircularProgressIndicator());
+      }
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          FittedBox(
+            fit: BoxFit.cover,
+            child: SizedBox(
+              width: _videoController!.value.size.width,
+              height: _videoController!.value.size.height,
+              child: VideoPlayer(_videoController!),
+            ),
+          ),
+          SafeArea(
+            child: Align(
+              alignment: Alignment.topRight,
+              child: Padding(
+                padding: const EdgeInsets.only(top: 80, right: 16),
+                child: IconButton(
+                  icon: Icon(
+                    _isMuted ? Icons.volume_off : Icons.volume_up,
+                    color: Colors.white,
+                  ),
+                  style: IconButton.styleFrom(
+                    backgroundColor: Colors.black45,
+                  ),
+                  onPressed: _toggleMute,
+                ),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+    
+    // Fallback Image Handle
     return FutureBuilder<Uint8List?>(
-      future: isFrontCard ? asset.fileData : asset.thumbnailData,
+      future: _imageFuture,
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator());

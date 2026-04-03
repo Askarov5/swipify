@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 import '../swipe_deck/swipe_screen.dart';
 import '../dashboard/stats_screen.dart';
+import '../email/email_coming_soon_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/providers/photo_provider.dart';
 import '../../core/providers/preferences_provider.dart';
@@ -474,7 +475,12 @@ class LibraryReviewScreen extends ConsumerWidget {
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
           _buildNavItem(Icons.image, 'Photos', true, null),
-          _buildNavItem(Icons.mail, 'Email', false, null),
+          _buildNavItem(Icons.mail, 'Email', false, () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(builder: (context) => const EmailComingSoonScreen()),
+            );
+          }),
           _buildNavItem(Icons.insert_chart, 'Stats', false, () {
             Navigator.push(
               context,

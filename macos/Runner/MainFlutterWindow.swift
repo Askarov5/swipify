@@ -12,8 +12,8 @@ class MainFlutterWindow: NSWindow {
 
     // Register our custom photo permission plugin that directly uses
     // PHPhotoLibrary - this bypasses photo_manager's broken channel
-    PhotoPermissionPlugin.register(
-      with: flutterViewController.registrar(forPlugin: "PhotoPermissionPlugin")
+    SwipifyGalleryService.register(
+      with: flutterViewController.registrar(forPlugin: "SwipifyGalleryService")
     )
 
     super.awakeFromNib()

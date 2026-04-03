@@ -40,6 +40,8 @@ class SwipifyGalleryService: NSObject, FlutterPlugin {
       fetchThumbnail(call: call, result: result)
     case "fetchFile":
       fetchFile(call: call, result: result)
+    case "fetchFilePath":
+      fetchFilePath(call: call, result: result)
     case "deletePhotos":
       deletePhotos(call: call, result: result)
     default:
@@ -51,7 +53,8 @@ class SwipifyGalleryService: NSObject, FlutterPlugin {
     DispatchQueue.global(qos: .userInitiated).async {
       let fetchOptions = PHFetchOptions()
       fetchOptions.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
-      let assets = PHAsset.fetchAssets(with: .image, options: fetchOptions)
+      fetchOptions.predicate = NSPredicate(format: "mediaType == %d OR mediaType == %d", PHAssetMediaType.image.rawValue, PHAssetMediaType.video.rawValue)
+      let assets = PHAsset.fetchAssets(with: fetchOptions)
       
       var metadataList: [[String: Any]] = []
       metadataList.reserveCapacity(assets.count)
@@ -60,7 +63,8 @@ class SwipifyGalleryService: NSObject, FlutterPlugin {
         if let creationDate = asset.creationDate {
           metadataList.append([
             "id": asset.localIdentifier,
-            "creationTime": Int(creationDate.timeIntervalSince1970 * 1000)
+            "creationTime": Int(creationDate.timeIntervalSince1970 * 1000),
+            "isVideo": asset.mediaType == .video
           ])
         }
       }
@@ -118,9 +122,36 @@ class SwipifyGalleryService: NSObject, FlutterPlugin {
       options.deliveryMode = .highQualityFormat
       options.isNetworkAccessAllowed = true
       
-      PHImageManager.default().requestImage(for: asset, targetSize: PHImageManagerMaximumSize, contentMode: .aspectFit, options: options) { image, _ in
-        if let image = image, let tiffData = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiffData), let jpegData = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.9]) {
+      PHImageManager.default().requestImage(for: asset, targetSize: CGSize(width: 1080, height: 1080), contentMode: .aspectFit, options: options) { image, _ in
+        if let image = image, let tiffData = image.tiffRepresentation, let bitmap = NSBitmapImageRep(data: tiffData), let jpegData = bitmap.representation(using: .jpeg, properties: [.compressionFactor: 0.8]) {
           DispatchQueue.main.async { result(FlutterStandardTypedData(bytes: jpegData)) }
+        } else {
+          DispatchQueue.main.async { result(nil) }
+        }
+      }
+    }
+  }
+
+  private func fetchFilePath(call: FlutterMethodCall, result: @escaping FlutterResult) {
+    guard let args = call.arguments as? [String: Any], let id = args["id"] as? String else {
+      result(FlutterError(code: "INVALID_ARGUMENT", message: "id is required", details: nil))
+      return
+    }
+    
+    DispatchQueue.global(qos: .userInitiated).async {
+      let fetchResult = PHAsset.fetchAssets(withLocalIdentifiers: [id], options: nil)
+      guard let asset = fetchResult.firstObject else {
+        DispatchQueue.main.async { result(nil) }
+        return
+      }
+      
+      let options = PHVideoRequestOptions()
+      options.isNetworkAccessAllowed = true
+      options.version = .original
+      
+      PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { avAsset, _, _ in
+        if let urlAsset = avAsset as? AVURLAsset {
+          DispatchQueue.main.async { result(urlAsset.url.path) }
         } else {
           DispatchQueue.main.async { result(nil) }
         }

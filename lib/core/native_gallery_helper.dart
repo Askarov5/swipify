@@ -6,8 +6,13 @@ import 'package:flutter/services.dart';
 class SwipifyPhoto {
   final String id;
   final DateTime creationTime;
+  final bool isVideo;
 
-  SwipifyPhoto({required this.id, required this.creationTime});
+  SwipifyPhoto({
+    required this.id, 
+    required this.creationTime,
+    required this.isVideo,
+  });
 
   /// Dynamically gets the thumbnail by calling the native channel
   Future<Uint8List?> get thumbnailData async {
@@ -36,6 +41,7 @@ class NativeGalleryHelper {
         return SwipifyPhoto(
           id: map['id'] as String,
           creationTime: DateTime.fromMillisecondsSinceEpoch(map['creationTime'] as int),
+          isVideo: map['isVideo'] as bool? ?? false,
         );
       }).toList();
     } catch (e) {
@@ -58,12 +64,22 @@ class NativeGalleryHelper {
     }
   }
 
-  /// Fetch high quality byte data for Swipe Screen
+  /// Fetch high quality byte data for Swipe Screen (typically meant for photos)
   static Future<Uint8List?> fetchFile(String id) async {
     try {
       return await _channel.invokeMethod<Uint8List>('fetchFile', {'id': id});
     } catch (e) {
       debugPrint('File fetch error: $e');
+      return null;
+    }
+  }
+
+  /// Returns the actual absolute file path for a native iOS/macOS video
+  static Future<String?> fetchFilePath(String id) async {
+    try {
+      return await _channel.invokeMethod<String>('fetchFilePath', {'id': id});
+    } catch (e) {
+      debugPrint('File Path fetch error: $e');
       return null;
     }
   }
