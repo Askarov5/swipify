@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:photo_manager/photo_manager.dart';
 
 /// A bulletproof permission helper that uses a custom native MethodChannel
 /// on both iOS and macOS to request photo library permissions. This bypasses
@@ -13,11 +14,21 @@ class PhotoPermissionHelper {
   /// Returns: authorized, limited, denied, restricted, notDetermined
   static Future<String> requestPermission() async {
     try {
-      final result = await _channel.invokeMethod<String>('requestPermission');
-      return result ?? 'notDetermined';
+      // 1. Standart approach per user request. Helps native OS appropriately hook PhotoManager.
+      final pmState = await PhotoManager.requestPermissionExtend();
+      if (pmState.isAuth || pmState.hasAccess) return 'authorized';
+      if (pmState == PermissionState.notDetermined) return 'notDetermined';
+      return 'denied';
     } catch (e) {
-      debugPrint('Permission request error: $e');
-      return 'notDetermined';
+      debugPrint('Standard PhotoManager failed ($e), falling back to custom...');
+      // 2. Custom native fallback if standard plugin fails (e.g. MissingPluginException)
+      try {
+        final result = await _channel.invokeMethod<String>('requestPermission');
+        return result ?? 'notDetermined';
+      } catch (e2) {
+        debugPrint('Permission request error: $e2');
+        return 'notDetermined';
+      }
     }
   }
 

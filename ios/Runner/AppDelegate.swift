@@ -3,20 +3,17 @@ import UIKit
 import Photos
 
 @main
-@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+@objc class AppDelegate: FlutterAppDelegate {
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
   ) -> Bool {
-    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
-  }
-
-  func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
-    GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
-    // Register our custom photo permission plugin
+    GeneratedPluginRegistrant.register(with: self)
+    // Register our custom photo permission plugin natively on the primary AppDelegate
     PhotoPermissionPlugin.register(
-      with: engineBridge.pluginRegistry.registrar(forPlugin: "PhotoPermissionPlugin")!
+      with: self.registrar(forPlugin: "PhotoPermissionPlugin")!
     )
+    return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 }
 

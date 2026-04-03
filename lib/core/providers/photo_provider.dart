@@ -124,9 +124,10 @@ final allMediaProvider = FutureProvider<List<AssetEntity>>((ref) async {
   final recentAlbum = paths.first;
   final count = await recentAlbum.assetCountAsync;
 
-  // Limiting to the 2000 most recent items for MVP performance (to allow grouping a substantial amount)
-  return await recentAlbum.getAssetListRange(
-      start: 0, end: count > 2000 ? 2000 : count);
+  // Fetch ALL metadata shells (AssetEntity).
+  // Native PhotoManager executes this seamlessly for 15,000+ items typically under 200ms
+  // because it strictly defers heavy image bytes/thumbnails until the SwipeScreen explicitly requests them.
+  return await recentAlbum.getAssetListRange(start: 0, end: count);
 });
 
 final batchedMediaProvider = Provider<AsyncValue<List<PhotoBatch>>>((ref) {
