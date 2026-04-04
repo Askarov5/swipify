@@ -419,7 +419,9 @@ class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
     try {
       deleteOk = await NativeGalleryHelper.deletePhotos(deleteIds);
     } catch (e) {
-      debugPrint("Error deleting items: $e");
+      if (kDebugMode) {
+        debugPrint('Error deleting items: $e');
+      }
     }
 
     if (deleteOk) {

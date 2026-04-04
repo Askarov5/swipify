@@ -1,6 +1,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
+void _logGalleryDebug(String message) {
+  if (kDebugMode) {
+    debugPrint(message);
+  }
+}
+
 /// Lightweight representation of a photo provided natively.
 class SwipifyPhoto {
   final String id;
@@ -47,7 +53,7 @@ class NativeGalleryHelper {
         );
       }).toList();
     } catch (e) {
-      debugPrint('Metadata fetch error: $e');
+      _logGalleryDebug('Metadata fetch error: $e');
       return [];
     }
   }
@@ -61,7 +67,7 @@ class NativeGalleryHelper {
         'height': height,
       });
     } catch (e) {
-      debugPrint('Thumbnail fetch error: $e');
+      _logGalleryDebug('Thumbnail fetch error: $e');
       return null;
     }
   }
@@ -71,7 +77,7 @@ class NativeGalleryHelper {
     try {
       return await _channel.invokeMethod<Uint8List>('fetchFile', {'id': id});
     } catch (e) {
-      debugPrint('File fetch error: $e');
+      _logGalleryDebug('File fetch error: $e');
       return null;
     }
   }
@@ -95,7 +101,7 @@ class NativeGalleryHelper {
       if (raw is String && raw.isNotEmpty) return raw;
       return null;
     } catch (e) {
-      debugPrint('File Path fetch error: $e');
+      _logGalleryDebug('File Path fetch error: $e');
       return null;
     }
   }
@@ -106,7 +112,7 @@ class NativeGalleryHelper {
       final result = await _channel.invokeMethod<bool>('deletePhotos', {'ids': ids});
       return result ?? false;
     } catch (e) {
-      debugPrint('Delete error: $e');
+      _logGalleryDebug('Delete error: $e');
       return false;
     }
   }
@@ -118,7 +124,7 @@ class NativeGalleryHelper {
       final result = await _channel.invokeMethod<String>('requestPermission');
       return result ?? 'notDetermined';
     } catch (e) {
-      debugPrint('Permission request error: $e');
+      _logGalleryDebug('Permission request error: $e');
       return 'notDetermined';
     }
   }
@@ -128,7 +134,7 @@ class NativeGalleryHelper {
       final result = await _channel.invokeMethod<String>('checkPermission');
       return result ?? 'notDetermined';
     } catch (e) {
-      debugPrint('Check permission error: $e');
+      _logGalleryDebug('Check permission error: $e');
       return 'notDetermined';
     }
   }
@@ -138,7 +144,7 @@ class NativeGalleryHelper {
       final result = await _channel.invokeMethod<bool>('openSettings');
       return result ?? false;
     } catch (e) {
-      debugPrint('Open settings error: $e');
+      _logGalleryDebug('Open settings error: $e');
       return false;
     }
   }
