@@ -12,58 +12,71 @@ import '../../core/providers/preferences_provider.dart';
 import '../../core/library_thumbnail_cache.dart';
 import '../../core/native_gallery_helper.dart';
 
-class LibraryReviewScreen extends ConsumerWidget {
+enum _MainNavTab { photos, email, stats }
+
+class LibraryReviewScreen extends ConsumerStatefulWidget {
   const LibraryReviewScreen({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<LibraryReviewScreen> createState() =>
+      _LibraryReviewScreenState();
+}
+
+class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen> {
+  _MainNavTab _selectedTab = _MainNavTab.photos;
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: SwipifyTheme.surface.withValues(alpha: 0.8),
         elevation: 0,
         surfaceTintColor: Colors.transparent,
-        title: Row(
-          children: [
-            const Icon(Icons.menu, color: SwipifyTheme.primary),
-            const SizedBox(width: 16),
-            Text(
-              'DIGITAL CURATOR',
-              style: Theme.of(context).textTheme.displayLarge?.copyWith(
-                    fontSize: 14,
-                    color: SwipifyTheme.primary,
-                    letterSpacing: 2.0,
-                  ),
-            ),
-          ],
-        ),
-        actions: const [
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16.0),
-            child: CircleAvatar(
-              backgroundColor: SwipifyTheme.surfaceContainerHighest,
-              radius: 16,
-              child: Icon(Icons.person,
-                  size: 16, color: SwipifyTheme.onSurfaceVariant),
-            ),
-          )
-        ],
+        title: _selectedTab == _MainNavTab.photos
+            ? Text(
+                'Swipify Photos & Videos',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: SwipifyTheme.primary,
+                    ),
+              )
+            : Text(
+                _selectedTab == _MainNavTab.email
+                    ? 'Email Cleanup'
+                    : 'Your Impact',
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w600,
+                    ),
+              ),
       ),
       body: SafeArea(
-        child: ref.watch(photoPermissionProvider).when(
-              data: (permission) {
-                if (!NativeGalleryHelper.isGranted(permission)) {
-                  return _buildPermissionRequired(context);
-                }
-                return _buildLibraryContent(context, ref);
-              },
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, st) =>
-                  Center(child: Text('Error checking permissions: $e')),
-            ),
+        child: IndexedStack(
+          index: _selectedTab.index,
+          sizing: StackFit.expand,
+          children: [
+            _buildPhotosTab(context, ref),
+            const EmailComingSoonScreen(embedded: true),
+            const StatsScreen(embedded: true),
+          ],
+        ),
       ),
       bottomNavigationBar: _buildBottomNav(context),
     );
+  }
+
+  Widget _buildPhotosTab(BuildContext context, WidgetRef ref) {
+    return ref.watch(photoPermissionProvider).when(
+          data: (permission) {
+            if (!NativeGalleryHelper.isGranted(permission)) {
+              return _buildPermissionRequired(context);
+            }
+            return _buildLibraryContent(context, ref);
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, st) =>
+              Center(child: Text('Error checking permissions: $e')),
+        );
   }
 
   Widget _buildPermissionRequired(BuildContext context) {
@@ -124,6 +137,11 @@ class LibraryReviewScreen extends ConsumerWidget {
         ),
       ),
     );
+  }
+
+  void _onSelectTab(_MainNavTab tab) {
+    if (_selectedTab == tab) return;
+    setState(() => _selectedTab = tab);
   }
 
   Widget _buildLibraryContent(BuildContext context, WidgetRef ref) {
@@ -459,54 +477,72 @@ class LibraryReviewScreen extends ConsumerWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
-          _buildNavItem(Icons.image, 'Photos', true, null),
-          _buildNavItem(Icons.mail, 'Email', false, () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const EmailComingSoonScreen()),
-            );
-          }),
-          _buildNavItem(Icons.insert_chart, 'Stats', false, () {
-            Navigator.push(
-              context,
-              MaterialPageRoute(builder: (context) => const StatsScreen()),
-            );
-          }),
+          _buildNavItem(
+            Icons.image,
+            'Photos',
+            _selectedTab == _MainNavTab.photos,
+            () => _onSelectTab(_MainNavTab.photos),
+          ),
+          _buildNavItem(
+            Icons.mail,
+            'Email',
+            _selectedTab == _MainNavTab.email,
+            () => _onSelectTab(_MainNavTab.email),
+          ),
+          _buildNavItem(
+            Icons.insert_chart,
+            'Stats',
+            _selectedTab == _MainNavTab.stats,
+            () => _onSelectTab(_MainNavTab.stats),
+          ),
         ],
       ),
     );
   }
 
   Widget _buildNavItem(
-      IconData icon, String label, bool isActive, VoidCallback? onTap) {
-    return InkWell(
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
-        decoration: BoxDecoration(
-          color:
-              isActive ? SwipifyTheme.surfaceContainerHigh : Colors.transparent,
-          borderRadius: BorderRadius.circular(16),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon,
-                color: isActive
-                    ? SwipifyTheme.primary
-                    : SwipifyTheme.primary.withValues(alpha: 0.4)),
-            const SizedBox(height: 4),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 10,
+    IconData icon,
+    String label,
+    bool isActive,
+    VoidCallback onTap,
+  ) {
+    return Semantics(
+      button: true,
+      label: label,
+      selected: isActive,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+          decoration: BoxDecoration(
+            color: isActive
+                ? SwipifyTheme.surfaceContainerHigh
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
                 color: isActive
                     ? SwipifyTheme.primary
                     : SwipifyTheme.primary.withValues(alpha: 0.4),
-                fontWeight: FontWeight.bold,
               ),
-            ),
-          ],
+              const SizedBox(height: 4),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10,
+                  color: isActive
+                      ? SwipifyTheme.primary
+                      : SwipifyTheme.primary.withValues(alpha: 0.4),
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

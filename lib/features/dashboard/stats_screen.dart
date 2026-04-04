@@ -1,22 +1,17 @@
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 
+/// When [embedded] is true, only scrollable content is returned (for use inside a parent shell with its own [Scaffold]/[AppBar]).
 class StatsScreen extends StatelessWidget {
-  const StatsScreen({super.key});
+  const StatsScreen({super.key, this.embedded = false});
+
+  final bool embedded;
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text('Your Impact',
-            style: Theme.of(context).textTheme.headlineMedium),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
-          child: Column(
+    final scrollable = SingleChildScrollView(
+      padding: const EdgeInsets.all(24.0),
+      child: Column(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
               // Massive Gamification Gauge
@@ -87,8 +82,20 @@ class StatsScreen extends StatelessWidget {
               ),
             ],
           ),
-        ),
+    );
+
+    if (embedded) {
+      return scrollable;
+    }
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text('Your Impact',
+            style: Theme.of(context).textTheme.headlineMedium),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
       ),
+      body: SafeArea(child: scrollable),
     );
   }
 
