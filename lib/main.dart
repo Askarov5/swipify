@@ -36,7 +36,7 @@ class SwipifyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Digital Curator',
+      title: 'Swipify',
       theme: SwipifyTheme.darkTheme,
       home: initialRouteIsLibrary
           ? const LibraryReviewScreen()

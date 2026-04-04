@@ -83,83 +83,105 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                 Expanded(
                   child: Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24.0),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        // Hero Illustration Proxy
-                        Container(
-                          width: double.infinity,
-                          height: 180,
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(24),
-                            color: SwipifyTheme.surfaceContainerLow,
-                          ),
-                          child: const Center(
-                            child: Icon(
-                              Icons.photo_library,
-                              size: 48,
-                              color: SwipifyTheme.primary,
+                    child: LayoutBuilder(
+                      builder: (context, constraints) {
+                        return SingleChildScrollView(
+                          clipBehavior: Clip.none,
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              minHeight: constraints.maxHeight,
                             ),
-                          ),
-                        ),
-
-                        // Headline & Content
-                        Column(
-                          children: [
-                            Text(
-                              'Ready to Declutter Your Gallery?',
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context)
-                                  .textTheme
-                                  .headlineMedium
-                                  ?.copyWith(
-                                    fontSize: 28,
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                // Hero Illustration Proxy
+                                Container(
+                                  width: double.infinity,
+                                  height: 180,
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(24),
+                                    color: SwipifyTheme.surfaceContainerLow,
                                   ),
-                            ),
-                            const SizedBox(height: 12),
-                            Text(
-                              'To start swiping through your photos and videos, we need full access to your library.\n100% on-device processing.',
-                              textAlign: TextAlign.center,
-                              style: Theme.of(context).textTheme.bodyMedium,
-                            ),
-                          ],
-                        ),
-
-                        // Key Benefits Bento-ish
-                        Column(
-                          children: [
-                            _buildBenefitRow(
-                              Icons.lock,
-                              'Privacy First',
-                              'On-device scanning.',
-                            ),
-                            const SizedBox(height: 8),
-                            _buildBenefitRow(
-                              Icons.cloud_off,
-                              'Zero Uploads',
-                              'No cloud needed.',
-                            ),
-                          ],
-                        ),
-
-                        // Actions
-                        Column(
-                          children: [
-                            SizedBox(
-                              width: double.infinity,
-                              child: ElevatedButton(
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: SwipifyTheme.primary,
-                                  foregroundColor: SwipifyTheme.onPrimary,
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 16),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(32),
+                                  child: const Center(
+                                    child: Icon(
+                                      Icons.photo_library,
+                                      size: 48,
+                                      color: SwipifyTheme.primary,
+                                    ),
                                   ),
-                                  elevation: 8,
                                 ),
-                                onPressed: _isLoading ? null : () async {
+
+                                const SizedBox(height: 20),
+
+                                // Headline & Content
+                                Column(
+                                  children: [
+                                    Text(
+                                      'Ready to Declutter Your Gallery?',
+                                      textAlign: TextAlign.center,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .headlineMedium
+                                          ?.copyWith(
+                                            fontSize: 28,
+                                          ),
+                                    ),
+                                    const SizedBox(height: 12),
+                                    Text(
+                                      'To start swiping through your photos and videos, we need full access to your library.\n100% on-device processing.',
+                                      textAlign: TextAlign.center,
+                                      style: Theme.of(context)
+                                          .textTheme
+                                          .bodyMedium,
+                                    ),
+                                  ],
+                                ),
+
+                                const SizedBox(height: 16),
+
+                                // Key Benefits Bento-ish
+                                Column(
+                                  children: [
+                                    _buildBenefitRow(
+                                      Icons.lock,
+                                      'Privacy First',
+                                      'On-device scanning.',
+                                    ),
+                                    const SizedBox(height: 8),
+                                    _buildBenefitRow(
+                                      Icons.cloud_off,
+                                      'Zero Uploads',
+                                      'No cloud needed.',
+                                    ),
+                                  ],
+                                ),
+
+                                const SizedBox(height: 24),
+
+                                // Actions
+                                Column(
+                                  children: [
+                                    SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton(
+                                        style: ElevatedButton.styleFrom(
+                                          backgroundColor:
+                                              SwipifyTheme.primary,
+                                          foregroundColor:
+                                              SwipifyTheme.onPrimary,
+                                          padding: const EdgeInsets.symmetric(
+                                              vertical: 16),
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(32),
+                                          ),
+                                          elevation: 8,
+                                        ),
+                                        onPressed: _isLoading
+                                            ? null
+                                            : () async {
                                   // 1. Check current permission status
                                   final currentStatus =
                                       await NativeGalleryHelper
@@ -237,7 +259,11 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                             ),
                           ],
                         ),
-                      ],
+                              ],
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 ),
