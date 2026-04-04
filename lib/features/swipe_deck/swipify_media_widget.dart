@@ -31,6 +31,8 @@ class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
   bool _isMuted = true;
   bool _initialized = false;
   String? _videoError;
+  /// Mirrors [VideoPlayerController.value.isPlaying] for transport UI without per-frame rebuilds.
+  bool _videoIsPlaying = false;
 
   Future<Uint8List?>? _imageFuture;
   Future<Uint8List?>? _videoPosterFuture;
@@ -104,7 +106,13 @@ class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
       setState(() {
         _initialized = false;
         _videoError = msg ?? 'Playback error';
+        _videoIsPlaying = false;
       });
+      return;
+    }
+    final playing = c.value.isPlaying;
+    if (playing != _videoIsPlaying) {
+      setState(() => _videoIsPlaying = playing);
     }
   }
 
@@ -219,6 +227,7 @@ class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
         _videoController = null;
         _initialized = false;
         _videoError = null;
+        _videoIsPlaying = false;
         _videoPosterFuture = NativeGalleryHelper.fetchThumbnail(
           widget.asset.id,
           width: _deckThumbExtent,
@@ -260,6 +269,7 @@ class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
         _videoController = null;
         _initialized = false;
         _videoError = null;
+        _videoIsPlaying = false;
         setState(() {});
       }
     }
@@ -278,6 +288,78 @@ class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
       _isMuted = !_isMuted;
       _videoController!.setVolume(_isMuted ? 0.0 : 1.0);
     });
+  }
+
+  static const Duration _skipStep = Duration(seconds: 10);
+
+  void _togglePlayPause() {
+    final c = _videoController;
+    if (c == null || !c.value.isInitialized) return;
+    if (_videoIsPlaying) {
+      c.pause();
+      setState(() => _videoIsPlaying = false);
+    } else {
+      c.play();
+      setState(() => _videoIsPlaying = true);
+    }
+  }
+
+  Future<void> _skipBackward() async {
+    final c = _videoController;
+    if (c == null || !c.value.isInitialized) return;
+    final next = c.value.position - _skipStep;
+    await c.seekTo(next < Duration.zero ? Duration.zero : next);
+  }
+
+  Future<void> _skipForward() async {
+    final c = _videoController;
+    if (c == null || !c.value.isInitialized) return;
+    final duration = c.value.duration;
+    if (duration == Duration.zero) return;
+    final next = c.value.position + _skipStep;
+    await c.seekTo(next > duration ? duration : next);
+  }
+
+  Widget _buildVideoControlsBar() {
+    final c = _videoController!;
+    final ready = c.value.isInitialized;
+    final playing = ready && _videoIsPlaying;
+    return Material(
+      color: Colors.transparent,
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: 0.55),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              IconButton(
+                tooltip: 'Back 10 seconds',
+                onPressed: ready ? _skipBackward : null,
+                icon: const Icon(Icons.replay_10, color: Colors.white, size: 28),
+              ),
+              IconButton(
+                tooltip: playing ? 'Pause' : 'Play',
+                onPressed: ready ? _togglePlayPause : null,
+                icon: Icon(
+                  playing ? Icons.pause : Icons.play_arrow,
+                  color: Colors.white,
+                  size: 36,
+                ),
+              ),
+              IconButton(
+                tooltip: 'Forward 10 seconds',
+                onPressed: ready ? _skipForward : null,
+                icon: const Icon(Icons.forward_10, color: Colors.white, size: 28),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -404,6 +486,13 @@ class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
                   ),
                 ),
               ),
+            ),
+          if (widget.isFrontCard)
+            Positioned(
+              left: 20,
+              right: 20,
+              bottom: 200,
+              child: _buildVideoControlsBar(),
             ),
         ],
       );
