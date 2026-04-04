@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -155,11 +157,20 @@ class SwipeSessionState {
   final List<SwipifyPhoto> deleteQueue;
   final bool isCommitted;
 
+  /// Batch key from [PhotoBatch.id] while this session is active.
+  final String? activeBatchId;
+
+  /// True once [SwipeSessionNotifier.commitSession] has written keep IDs to [reviewedIdsProvider]
+  /// (may be true while deletes are still pending or failed).
+  final bool keepsPersistedToLibrary;
+
   SwipeSessionState({
     required this.remainingAssets,
     this.keepQueue = const [],
     this.deleteQueue = const [],
     this.isCommitted = false,
+    this.activeBatchId,
+    this.keepsPersistedToLibrary = false,
   });
 
   SwipeSessionState copyWith({
@@ -167,24 +178,123 @@ class SwipeSessionState {
     List<SwipifyPhoto>? keepQueue,
     List<SwipifyPhoto>? deleteQueue,
     bool? isCommitted,
+    String? activeBatchId,
+    bool clearActiveBatchId = false,
+    bool? keepsPersistedToLibrary,
   }) {
     return SwipeSessionState(
       remainingAssets: remainingAssets ?? this.remainingAssets,
       keepQueue: keepQueue ?? this.keepQueue,
       deleteQueue: deleteQueue ?? this.deleteQueue,
       isCommitted: isCommitted ?? this.isCommitted,
+      activeBatchId:
+          clearActiveBatchId ? null : (activeBatchId ?? this.activeBatchId),
+      keepsPersistedToLibrary:
+          keepsPersistedToLibrary ?? this.keepsPersistedToLibrary,
     );
   }
 }
 
 class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
+  static String _draftPrefsKey(String batchId) =>
+      'swipify_swipe_draft_v1_${batchId.hashCode}';
+
   @override
   SwipeSessionState build() {
     return SwipeSessionState(remainingAssets: []);
   }
 
-  void init(List<SwipifyPhoto> assets) {
-    state = SwipeSessionState(remainingAssets: List.from(assets));
+  void init(List<SwipifyPhoto> assets, String batchId) {
+    state = SwipeSessionState(
+      remainingAssets: List.from(assets),
+      activeBatchId: batchId,
+    );
+  }
+
+  /// Restore persisted draft for this batch if valid (call after [init]).
+  void tryRestoreDraft(PhotoBatch batch, List<SwipifyPhoto> library) {
+    if (state.activeBatchId != batch.id) return;
+    final prefs = ref.read(sharedPreferencesProvider);
+    final raw = prefs.getString(_draftPrefsKey(batch.id));
+    if (raw == null) return;
+
+    Map<String, dynamic> map;
+    try {
+      map = jsonDecode(raw) as Map<String, dynamic>;
+    } catch (_) {
+      prefs.remove(_draftPrefsKey(batch.id));
+      return;
+    }
+
+    final rIds = List<String>.from(map['r'] as List? ?? const []);
+    final kIds = List<String>.from(map['k'] as List? ?? const []);
+    final dIds = List<String>.from(map['d'] as List? ?? const []);
+    final kp = map['kp'] as bool? ?? false;
+
+    final batchSet = batch.allAssetIds.toSet();
+    final allDraftIds = <String>{...rIds, ...kIds, ...dIds};
+    if (allDraftIds.isEmpty) return;
+    if (!allDraftIds.every(batchSet.contains)) {
+      prefs.remove(_draftPrefsKey(batch.id));
+      return;
+    }
+
+    final lookup = {for (final p in library) p.id: p};
+    List<SwipifyPhoto>? resolve(List<String> ids) {
+      final out = <SwipifyPhoto>[];
+      for (final id in ids) {
+        final p = lookup[id];
+        if (p == null) {
+          prefs.remove(_draftPrefsKey(batch.id));
+          return null;
+        }
+        out.add(p);
+      }
+      return out;
+    }
+
+    final remaining = resolve(rIds);
+    if (remaining == null) return;
+    final keep = resolve(kIds);
+    if (keep == null) return;
+    final del = resolve(dIds);
+    if (del == null) return;
+
+    state = state.copyWith(
+      remainingAssets: remaining,
+      keepQueue: keep,
+      deleteQueue: del,
+      keepsPersistedToLibrary: kp,
+      isCommitted: false,
+    );
+    _persistDraft();
+  }
+
+  void _persistDraft() {
+    final batchId = state.activeBatchId;
+    if (batchId == null) return;
+    final prefs = ref.read(sharedPreferencesProvider);
+    final key = _draftPrefsKey(batchId);
+    if (state.isCommitted) {
+      prefs.remove(key);
+      return;
+    }
+    final payload = jsonEncode({
+      'r': state.remainingAssets.map((e) => e.id).toList(),
+      'k': state.keepQueue.map((e) => e.id).toList(),
+      'd': state.deleteQueue.map((e) => e.id).toList(),
+      'kp': state.keepsPersistedToLibrary,
+    });
+    prefs.setString(key, payload);
+  }
+
+  /// Clears in-memory swipe queues (e.g. user left without saving).
+  void discardSession() {
+    final batchId = state.activeBatchId;
+    if (batchId != null) {
+      ref.read(sharedPreferencesProvider).remove(_draftPrefsKey(batchId));
+    }
+    state = SwipeSessionState(remainingAssets: []);
   }
 
   void keepItem(SwipifyPhoto item) {
@@ -194,6 +304,7 @@ class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
       ..remove(item);
     final nextKeep = List<SwipifyPhoto>.from(state.keepQueue)..add(item);
     state = state.copyWith(remainingAssets: nextRemaining, keepQueue: nextKeep);
+    _persistDraft();
   }
 
   void deleteItem(SwipifyPhoto item) {
@@ -203,29 +314,49 @@ class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
       ..remove(item);
     final nextDelete = List<SwipifyPhoto>.from(state.deleteQueue)..add(item);
     state = state.copyWith(remainingAssets: nextRemaining, deleteQueue: nextDelete);
+    _persistDraft();
   }
 
-  Future<void> commitSession() async {
-    if (state.isCommitted) return;
-    
+  /// Persists keeps, then deletes (if any). Returns `true` when fully done.
+  /// On delete failure, keeps stay saved; [keepsPersistedToLibrary] is true;
+  /// [isCommitted] stays false so the user can call again to retry deletes.
+  Future<bool> commitSession() async {
+    if (state.isCommitted) return true;
+
     final keepIds = state.keepQueue.map((e) => e.id).toList();
     final deleteIds = state.deleteQueue.map((e) => e.id).toList();
 
-    ref.read(reviewedIdsProvider.notifier).addIds(keepIds);
-
-    if (deleteIds.isNotEmpty) {
-      try {
-        final success = await NativeGalleryHelper.deletePhotos(deleteIds);
-        if (success) {
-          ref.read(reviewedIdsProvider.notifier).addIds(deleteIds);
-          ref.invalidate(allMediaProvider);
-        }
-      } catch (e) {
-        debugPrint("Error deleting items: $e");
+    if (!state.keepsPersistedToLibrary) {
+      if (keepIds.isNotEmpty) {
+        ref.read(reviewedIdsProvider.notifier).addIds(keepIds);
       }
+      state = state.copyWith(keepsPersistedToLibrary: true);
+      _persistDraft();
     }
-    
-    state = state.copyWith(isCommitted: true);
+
+    if (deleteIds.isEmpty) {
+      state = state.copyWith(isCommitted: true);
+      _persistDraft();
+      return true;
+    }
+
+    var deleteOk = false;
+    try {
+      deleteOk = await NativeGalleryHelper.deletePhotos(deleteIds);
+    } catch (e) {
+      debugPrint("Error deleting items: $e");
+    }
+
+    if (deleteOk) {
+      ref.read(reviewedIdsProvider.notifier).addIds(deleteIds);
+      ref.invalidate(allMediaProvider);
+      state = state.copyWith(isCommitted: true);
+      _persistDraft();
+      return true;
+    }
+
+    _persistDraft();
+    return false;
   }
 }
 

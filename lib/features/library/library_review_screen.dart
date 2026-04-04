@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
@@ -7,6 +9,7 @@ import '../email/email_coming_soon_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/providers/photo_provider.dart';
 import '../../core/providers/preferences_provider.dart';
+import '../../core/library_thumbnail_cache.dart';
 import '../../core/native_gallery_helper.dart';
 
 class LibraryReviewScreen extends ConsumerWidget {
@@ -313,11 +316,7 @@ class LibraryReviewScreen extends ConsumerWidget {
       child: InkWell(
         onTap: actionable
             ? () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => SwipeScreen(batch: batch)),
-                );
+                SwipeScreen.open(context, batch);
               }
             : null,
         borderRadius: BorderRadius.circular(24),
@@ -334,24 +333,14 @@ class LibraryReviewScreen extends ConsumerWidget {
                 tag: 'hero_collage_$title',
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(8),
-                  child: Container(
+                  child: SizedBox(
                     width: 64,
                     height: 64,
-                    color: SwipifyTheme.surfaceContainerHighest,
-                    child: GridView.count(
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 2,
-                      crossAxisSpacing: 2,
-                      physics: const NeverScrollableScrollPhysics(),
-                      padding: EdgeInsets.zero,
-                      children: List.generate(
-                        4,
-                        (index) => Container(
-                          color: actionable
-                              ? SwipifyTheme.primaryContainer
-                                  .withValues(alpha: 0.5)
-                              : Colors.grey.withValues(alpha: 0.2),
-                        ),
+                    child: ColoredBox(
+                      color: SwipifyTheme.surfaceContainerHighest,
+                      child: _BatchThumbnailCollage(
+                        candidates: batch.assets.take(4).toList(),
+                        actionable: actionable,
                       ),
                     ),
                   ),
@@ -416,11 +405,7 @@ class LibraryReviewScreen extends ConsumerWidget {
                         minimumSize: Size.zero,
                       ),
                       onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                              builder: (context) => SwipeScreen(batch: batch)),
-                        );
+                        SwipeScreen.open(context, batch);
                       },
                       icon: const Text('Clean',
                           style: TextStyle(
@@ -524,6 +509,67 @@ class LibraryReviewScreen extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// 2×2 preview grid for a batch row; loads native thumbnails for up to four assets.
+class _BatchThumbnailCollage extends StatelessWidget {
+  const _BatchThumbnailCollage({
+    required this.candidates,
+    required this.actionable,
+  });
+
+  final List<SwipifyPhoto> candidates;
+  final bool actionable;
+
+  Color get _placeholderColor => actionable
+      ? SwipifyTheme.primaryContainer.withValues(alpha: 0.5)
+      : Colors.grey.withValues(alpha: 0.2);
+
+  @override
+  Widget build(BuildContext context) {
+    return GridView.count(
+      crossAxisCount: 2,
+      mainAxisSpacing: 2,
+      crossAxisSpacing: 2,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: EdgeInsets.zero,
+      shrinkWrap: true,
+      children: List.generate(4, _buildCell),
+    );
+  }
+
+  Widget _buildCell(int index) {
+    if (index >= candidates.length) {
+      return ColoredBox(color: _placeholderColor);
+    }
+    final photo = candidates[index];
+    return FutureBuilder<Uint8List?>(
+      future: LibraryThumbnailCache.getOrFetch(photo.id, width: 128, height: 128),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return ColoredBox(
+            color: SwipifyTheme.surfaceContainerHighest,
+            child: const Center(
+              child: SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(strokeWidth: 1.5),
+              ),
+            ),
+          );
+        }
+        final data = snapshot.data;
+        if (snapshot.hasError || data == null) {
+          return ColoredBox(color: _placeholderColor);
+        }
+        return Image.memory(
+          data,
+          fit: BoxFit.cover,
+          gaplessPlayback: true,
+        );
+      },
     );
   }
 }

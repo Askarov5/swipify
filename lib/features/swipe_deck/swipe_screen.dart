@@ -13,45 +13,162 @@ class SwipeScreen extends ConsumerStatefulWidget {
 
   const SwipeScreen({super.key, required this.batch});
 
+  static Future<T?> open<T>(BuildContext context, PhotoBatch batch) {
+    return Navigator.push<T>(
+      context,
+      MaterialPageRoute(builder: (_) => SwipeScreen(batch: batch)),
+    );
+  }
+
   @override
   ConsumerState<SwipeScreen> createState() => _SwipeScreenState();
 }
 
+enum _DeckMotion { idle, rebounding, flyingOff }
+
 class _SwipeScreenState extends ConsumerState<SwipeScreen>
     with SingleTickerProviderStateMixin {
-  late AnimationController _swipeController;
+  static const double _parallaxDistanceFactor = 0.35;
+
+  late AnimationController _deckController;
   Offset _dragOffset = Offset.zero;
   bool _isDragging = false;
+  _DeckMotion _motion = _DeckMotion.idle;
+
+  Offset _reboundStartDrag = Offset.zero;
+  double _reboundStartParallax = 0;
+
+  Offset _flyStartDrag = Offset.zero;
+  Offset _flyEndDrag = Offset.zero;
+  double _flyStartParallax = 0;
+  double _animParallax = 0;
+
+  SwipifyPhoto? _pendingFlyOffCard;
+  bool _pendingFlyOffIsKeep = false;
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(swipeSessionNotifierProvider.notifier).init(widget.batch.assets);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      try {
+        final library = await ref.read(allMediaProvider.future);
+        if (!mounted) return;
+        final notifier = ref.read(swipeSessionNotifierProvider.notifier);
+        notifier.init(widget.batch.assets, widget.batch.id);
+        notifier.tryRestoreDraft(widget.batch, library);
+      } catch (_) {
+        if (!mounted) return;
+        ref.read(swipeSessionNotifierProvider.notifier).init(
+              widget.batch.assets,
+              widget.batch.id,
+            );
+      }
     });
-    _swipeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    )..addListener(() {
-        setState(() {
-          _dragOffset = Offset(_dragOffset.dx * (1 - _swipeController.value),
-              _dragOffset.dy * (1 - _swipeController.value));
-        });
-      });
+    _deckController = AnimationController(vsync: this)
+      ..addListener(_onDeckAnimationTick);
   }
 
   @override
   void dispose() {
-    _swipeController.dispose();
+    _deckController.dispose();
     super.dispose();
   }
 
+  void _onDeckAnimationTick() {
+    if (!mounted || _motion == _DeckMotion.idle) return;
+    final t = _deckController.value;
+    setState(() {
+      switch (_motion) {
+        case _DeckMotion.idle:
+          break;
+        case _DeckMotion.rebounding:
+          final c = Curves.easeOutCubic.transform(t);
+          _dragOffset = Offset.lerp(_reboundStartDrag, Offset.zero, c)!;
+          _animParallax = lerpDouble(_reboundStartParallax, 0, c)!;
+          break;
+        case _DeckMotion.flyingOff:
+          final c = Curves.easeInCubic.transform(t);
+          _dragOffset = Offset.lerp(_flyStartDrag, _flyEndDrag, c)!;
+          _animParallax = lerpDouble(_flyStartParallax, 1, c)!;
+          break;
+      }
+    });
+  }
+
+  double _parallaxFromDrag(double screenWidth) {
+    final denom = screenWidth * _parallaxDistanceFactor;
+    if (denom <= 0) return 0;
+    return (_dragOffset.distance / denom).clamp(0.0, 1.0);
+  }
+
+  double _effectiveParallax(double screenWidth) {
+    switch (_motion) {
+      case _DeckMotion.idle:
+        return _parallaxFromDrag(screenWidth);
+      case _DeckMotion.rebounding:
+      case _DeckMotion.flyingOff:
+        return _animParallax;
+    }
+  }
+
+  void _completeFlyOff(SwipeSessionNotifier session) {
+    final card = _pendingFlyOffCard;
+    if (card == null || !mounted) return;
+    final keep = _pendingFlyOffIsKeep;
+    _pendingFlyOffCard = null;
+    if (keep) {
+      session.keepItem(card);
+    } else {
+      session.deleteItem(card);
+    }
+    setState(() {
+      _motion = _DeckMotion.idle;
+      _dragOffset = Offset.zero;
+      _animParallax = 0;
+    });
+    _deckController.reset();
+  }
+
+  void _startFlyOff({
+    required BuildContext context,
+    required SwipeSessionNotifier session,
+    required SwipifyPhoto card,
+    required bool keep,
+  }) {
+    if (_motion != _DeckMotion.idle) return;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final sign = keep ? 1.0 : -1.0;
+    _deckController.stop();
+    final startParallax = _parallaxFromDrag(screenWidth);
+    setState(() {
+      _isDragging = false;
+      _flyStartDrag = _dragOffset;
+      _flyEndDrag = Offset(
+        sign * screenWidth * 1.5 + _dragOffset.dx * 0.15,
+        _dragOffset.dy,
+      );
+      _flyStartParallax = startParallax;
+      _animParallax = startParallax;
+      _pendingFlyOffCard = card;
+      _pendingFlyOffIsKeep = keep;
+      _motion = _DeckMotion.flyingOff;
+    });
+    _deckController.duration = const Duration(milliseconds: 280);
+    _deckController.forward(from: 0).whenComplete(() {
+      if (!mounted) return;
+      _completeFlyOff(session);
+    });
+  }
+
   void _onPanStart(DragStartDetails details) {
-    _swipeController.stop();
+    if (_motion != _DeckMotion.idle) return;
+    _deckController.stop();
     setState(() => _isDragging = true);
   }
 
   void _onPanUpdate(DragUpdateDetails details) {
+    if (_motion != _DeckMotion.idle) return;
     setState(() {
       _dragOffset += details.delta;
     });
@@ -59,39 +176,206 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
 
   void _onPanEnd(DragEndDetails details, SwipeSessionNotifier session,
       SwipifyPhoto frontCard) {
+    if (_motion != _DeckMotion.idle) return;
     setState(() => _isDragging = false);
 
-    final screenWidth = MediaQuery.of(context).size.width;
+    final screenWidth = MediaQuery.sizeOf(context).width;
 
     if (_dragOffset.dx.abs() > screenWidth * 0.3) {
-      bool swipedRight = _dragOffset.dx > 0;
-      if (swipedRight) {
-        session.keepItem(frontCard);
-      } else {
-        session.deleteItem(frontCard);
-      }
-      setState(() {
-        _dragOffset = Offset.zero;
-      });
+      final swipedRight = _dragOffset.dx > 0;
+      _startFlyOff(
+        context: context,
+        session: session,
+        card: frontCard,
+        keep: swipedRight,
+      );
     } else {
-      _swipeController.forward(from: 0).whenComplete(() {
-        setState(() => _dragOffset = Offset.zero);
+      final start = _dragOffset;
+      final startP = _parallaxFromDrag(screenWidth);
+      setState(() {
+        _motion = _DeckMotion.rebounding;
+        _reboundStartDrag = start;
+        _reboundStartParallax = startP;
+        _animParallax = startP;
+      });
+      _deckController.duration = const Duration(milliseconds: 320);
+      _deckController.forward(from: 0).whenComplete(() {
+        if (!mounted) return;
+        setState(() {
+          _motion = _DeckMotion.idle;
+          _dragOffset = Offset.zero;
+          _animParallax = 0;
+        });
+        _deckController.reset();
       });
     }
+  }
+
+  bool _needsExitGuard(SwipeSessionState session) {
+    if (session.isCommitted) return false;
+    return session.keepQueue.isNotEmpty || session.deleteQueue.isNotEmpty;
+  }
+
+  void _onClosePressed(bool needsExitGuard) {
+    if (!needsExitGuard) {
+      Navigator.pop(context);
+      return;
+    }
+    _showLeaveBatchDialog();
+  }
+
+  Future<void> _showLeaveBatchDialog() async {
+    final session = ref.read(swipeSessionNotifierProvider);
+    final keepCount = session.keepQueue.length;
+    final deleteCount = session.deleteQueue.length;
+
+    if (!mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      barrierColor: Colors.black.withValues(alpha: 0.55),
+      builder: (dialogContext) {
+        bool saving = false;
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return AlertDialog(
+              backgroundColor: SwipifyTheme.surfaceContainerHigh,
+              surfaceTintColor: Colors.transparent,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+              ),
+              title: Text(
+                'Leave this batch?',
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                      color: SwipifyTheme.onSurface,
+                      fontWeight: FontWeight.w700,
+                    ),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'You sorted $keepCount kept and $deleteCount to delete so far.',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: SwipifyTheme.onSurfaceVariant,
+                          ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'Discard loses those choices. Save & leave applies them now; you can finish the rest of this batch later.',
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: SwipifyTheme.onSurfaceVariant,
+                          ),
+                    ),
+                  ],
+                ),
+              ),
+              actionsAlignment: MainAxisAlignment.end,
+              actionsOverflowAlignment: OverflowBarAlignment.end,
+              actions: [
+                TextButton(
+                  onPressed: saving
+                      ? null
+                      : () => Navigator.pop(dialogContext),
+                  child: const Text('Continue swiping'),
+                ),
+                TextButton(
+                  onPressed: saving
+                      ? null
+                      : () {
+                          ref
+                              .read(swipeSessionNotifierProvider.notifier)
+                              .discardSession();
+                          Navigator.pop(dialogContext);
+                          if (mounted) Navigator.pop(context);
+                        },
+                  child: Text(
+                    'Discard',
+                    style: TextStyle(color: SwipifyTheme.secondary),
+                  ),
+                ),
+                FilledButton(
+                  onPressed: saving
+                      ? null
+                      : () async {
+                          setDialogState(() => saving = true);
+                          try {
+                            final ok = await ref
+                                .read(swipeSessionNotifierProvider.notifier)
+                                .commitSession();
+                            if (!context.mounted) return;
+                            if (ok) {
+                              if (dialogContext.mounted) {
+                                Navigator.pop(dialogContext);
+                              }
+                              if (context.mounted) {
+                                Navigator.pop(context);
+                              }
+                            } else {
+                              if (dialogContext.mounted) {
+                                setDialogState(() => saving = false);
+                              }
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Keeps were saved, but delete failed. Finish this batch to retry.',
+                                    ),
+                                  ),
+                                );
+                              }
+                            }
+                          } catch (_) {
+                            if (dialogContext.mounted) {
+                              setDialogState(() => saving = false);
+                            }
+                          }
+                        },
+                  style: FilledButton.styleFrom(
+                    backgroundColor: SwipifyTheme.primary,
+                    foregroundColor: SwipifyTheme.onPrimary,
+                  ),
+                  child: saving
+                      ? const SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: SwipifyTheme.onPrimary,
+                          ),
+                        )
+                      : const Text('Save & leave'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final initialAssets = widget.batch.assets;
+    final sessionState = ref.watch(swipeSessionNotifierProvider);
+    final needsExitGuard = _needsExitGuard(sessionState);
 
-    return Scaffold(
+    return PopScope(
+      canPop: !needsExitGuard,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        _showLeaveBatchDialog();
+      },
+      child: Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
         leading: IconButton(
           icon: const Icon(Icons.close, color: SwipifyTheme.onSurfaceVariant),
-          onPressed: () => Navigator.pop(context),
+          onPressed: () => _onClosePressed(needsExitGuard),
         ),
         title: Text(
           widget.batch.title,
@@ -119,6 +403,9 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
               if (cards.isEmpty) {
                 final isCommitted = sessionState.isCommitted;
                 final bool hasDeletes = sessionState.deleteQueue.isNotEmpty;
+                final showDeleteRetry = !isCommitted &&
+                    sessionState.keepsPersistedToLibrary &&
+                    hasDeletes;
 
                 return Center(
                   child: Column(
@@ -135,26 +422,87 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
                       Text('To Delete: ${sessionState.deleteQueue.length}'),
                       const SizedBox(height: 24),
                       if (!isCommitted) ...[
-                        ElevatedButton.icon(
-                          onPressed: () async {
-                            final notifier = ref.read(swipeSessionNotifierProvider.notifier);
-                            await notifier.commitSession();
-                            if (context.mounted) {
-                              Navigator.pop(context); // Return to library after commit
-                            }
-                          },
-                          icon: hasDeletes ? const Icon(Icons.delete_forever) : const Icon(Icons.check),
-                          label: Text(hasDeletes ? 'Confirm & Delete ${sessionState.deleteQueue.length} Items' : 'Finish Batch'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: hasDeletes ? SwipifyTheme.secondary : SwipifyTheme.primary,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                        if (showDeleteRetry) ...[
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 24),
+                            child: Text(
+                              'Your keeps are saved. Some items could not be deleted from the library.',
+                              textAlign: TextAlign.center,
+                              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                    color: SwipifyTheme.secondary,
+                                  ),
+                            ),
                           ),
-                        ),
+                          const SizedBox(height: 16),
+                          ElevatedButton.icon(
+                            onPressed: () async {
+                              final notifier =
+                                  ref.read(swipeSessionNotifierProvider.notifier);
+                              final ok = await notifier.commitSession();
+                              if (!context.mounted) return;
+                              if (ok) {
+                                Navigator.pop(context);
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Delete still failed. Try again later.'),
+                                  ),
+                                );
+                              }
+                            },
+                            icon: const Icon(Icons.delete_forever),
+                            label: Text(
+                                'Retry delete (${sessionState.deleteQueue.length})'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: SwipifyTheme.secondary,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 24, vertical: 12),
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                        ],
+                        if (!showDeleteRetry)
+                          ElevatedButton.icon(
+                            onPressed: () async {
+                              final notifier =
+                                  ref.read(swipeSessionNotifierProvider.notifier);
+                              final ok = await notifier.commitSession();
+                              if (!context.mounted) return;
+                              if (ok) {
+                                Navigator.pop(context);
+                              } else {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text(
+                                      'Could not complete. If you chose deletes, use Retry when it appears.',
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
+                            icon: hasDeletes
+                                ? const Icon(Icons.delete_forever)
+                                : const Icon(Icons.check),
+                            label: Text(hasDeletes
+                                ? 'Confirm & Delete ${sessionState.deleteQueue.length} Items'
+                                : 'Finish Batch'),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: hasDeletes
+                                  ? SwipifyTheme.secondary
+                                  : SwipifyTheme.primary,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 24, vertical: 12),
+                            ),
+                          ),
                         const SizedBox(height: 12),
                         TextButton(
                           onPressed: () {
-                            Navigator.pop(context); // Discards session changes
+                            ref
+                                .read(swipeSessionNotifierProvider.notifier)
+                                .discardSession();
+                            Navigator.pop(context);
                           },
                           child: const Text('Cancel / Discard', style: TextStyle(color: SwipifyTheme.onSurfaceVariant)),
                         )
@@ -179,6 +527,9 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
 
               final total = initialAssets.length;
               final progress = 1.0 - (cards.length / total);
+              final screenWidth = MediaQuery.sizeOf(context).width;
+              final deckParallax = _effectiveParallax(screenWidth);
+              final deckBusy = _motion != _DeckMotion.idle;
 
               return Stack(
                 fit: StackFit.expand,
@@ -190,6 +541,11 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
                       int index = entry.key;
                       SwipifyPhoto asset = entry.value;
                       bool isFrontCard = index == cards.length - 1;
+                      final swipeKeepTint = !isFrontCard
+                          ? false
+                          : (_motion == _DeckMotion.flyingOff
+                              ? _pendingFlyOffIsKeep
+                              : _dragOffset.dx > 0);
 
                       Widget card = Hero(
                         tag: isFrontCard
@@ -259,13 +615,16 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
                                     ),
                                   ),
                                 ),
-                                if (isFrontCard && _isDragging)
+                                if (isFrontCard &&
+                                    (_isDragging || _motion == _DeckMotion.flyingOff))
                                   Container(
-                                    color: _dragOffset.dx > 0
+                                    color: swipeKeepTint
                                         ? SwipifyTheme.primary.withValues(
-                                            alpha: (_dragOffset.dx / 300).clamp(0.0, 0.4))
+                                            alpha: (_dragOffset.dx.abs() / 300)
+                                                .clamp(0.0, 0.4))
                                         : SwipifyTheme.secondary.withValues(
-                                            alpha: (_dragOffset.dx.abs() / 300).clamp(0.0, 0.4)),
+                                            alpha: (_dragOffset.dx.abs() / 300)
+                                                .clamp(0.0, 0.4)),
                                   ),
                               ],
                             ),
@@ -274,25 +633,41 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
                       );
 
                       if (isFrontCard) {
-                        final rotationAngle = (_dragOffset.dx / MediaQuery.of(context).size.width) * 0.3;
-                        return GestureDetector(
-                          onPanStart: _onPanStart,
-                          onPanUpdate: _onPanUpdate,
-                          onPanEnd: (details) => _onPanEnd(details, sessionNotifier, asset),
-                          child: Transform.translate(
-                            offset: _dragOffset,
-                            child: Transform.rotate(
-                              angle: rotationAngle,
-                              child: card,
+                        final rotationAngle =
+                            screenWidth > 0 ? (_dragOffset.dx / screenWidth) * 0.3 : 0.0;
+                        return IgnorePointer(
+                          ignoring: deckBusy,
+                          child: GestureDetector(
+                            onPanStart: _onPanStart,
+                            onPanUpdate: _onPanUpdate,
+                            onPanEnd: (details) =>
+                                _onPanEnd(details, sessionNotifier, asset),
+                            child: Transform.translate(
+                              offset: _dragOffset,
+                              child: Transform.rotate(
+                                angle: rotationAngle,
+                                child: card,
+                              ),
                             ),
                           ),
                         );
                       }
 
+                      final depth = cards.length - 1 - index;
+                      final double scale;
+                      final double translateY;
+                      if (cards.length >= 2 && index == cards.length - 2) {
+                        scale = lerpDouble(0.95, 1.0, deckParallax)!;
+                        translateY = lerpDouble(20.0, 0.0, deckParallax)!;
+                      } else {
+                        scale = 1.0 - (depth * 0.05).clamp(0.0, 1.0);
+                        translateY = (depth * 20.0).clamp(0.0, 100.0);
+                      }
+
                       return Transform.scale(
-                        scale: 1.0 - ((cards.length - 1 - index) * 0.05).clamp(0.0, 1.0),
+                        scale: scale,
                         child: Transform.translate(
-                          offset: Offset(0, ((cards.length - 1 - index) * 20.0).clamp(0.0, 100.0)),
+                          offset: Offset(0, translateY),
                           child: card,
                         ),
                       );
@@ -360,9 +735,14 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
                                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                                 children: [
                                   IconButton(
-                                    onPressed: () {
-                                      sessionNotifier.deleteItem(cards.last);
-                                    },
+                                    onPressed: deckBusy
+                                        ? null
+                                        : () => _startFlyOff(
+                                              context: context,
+                                              session: sessionNotifier,
+                                              card: cards.last,
+                                              keep: false,
+                                            ),
                                     icon: const Icon(Icons.delete, color: SwipifyTheme.secondary, size: 32),
                                     style: IconButton.styleFrom(
                                       backgroundColor: SwipifyTheme.secondaryContainer.withValues(alpha: 0.3),
@@ -374,9 +754,14 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
                                     icon: const Icon(Icons.info_outline, color: SwipifyTheme.onSurfaceVariant),
                                   ),
                                   IconButton(
-                                    onPressed: () {
-                                      sessionNotifier.keepItem(cards.last);
-                                    },
+                                    onPressed: deckBusy
+                                        ? null
+                                        : () => _startFlyOff(
+                                              context: context,
+                                              session: sessionNotifier,
+                                              card: cards.last,
+                                              keep: true,
+                                            ),
                                     icon: const Icon(Icons.skip_next, color: SwipifyTheme.primary, size: 32),
                                     style: IconButton.styleFrom(
                                       backgroundColor: SwipifyTheme.primaryContainer.withValues(alpha: 0.3),
@@ -397,6 +782,7 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
           ),
         ],
       ),
+      ),
     );
   }
 }
@@ -416,72 +802,204 @@ class SwipifyMediaWidget extends StatefulWidget {
 }
 
 class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
+  /// Max edge length for deck thumbnails (back cards and video posters).
+  static const double _deckThumbExtent = 720;
+
+  /// Avoid repeat native export / path resolution when revisiting the same clip in one session.
+  static final Map<String, String> _sessionVideoPathCache = <String, String>{};
+
   VideoPlayerController? _videoController;
   bool _isMuted = true;
   bool _initialized = false;
-  
+  String? _videoError;
+
   Future<Uint8List?>? _imageFuture;
+  Future<Uint8List?>? _videoPosterFuture;
+
+  Future<Uint8List?> _photoLoadFuture() {
+    if (widget.isFrontCard) {
+      return widget.asset.fileData;
+    }
+    return NativeGalleryHelper.fetchThumbnail(
+      widget.asset.id,
+      width: _deckThumbExtent,
+      height: _deckThumbExtent,
+    );
+  }
 
   @override
   void initState() {
     super.initState();
     if (widget.asset.isVideo) {
-      _initVideo();
+      _videoPosterFuture = NativeGalleryHelper.fetchThumbnail(
+        widget.asset.id,
+        width: _deckThumbExtent,
+        height: _deckThumbExtent,
+      );
+      if (widget.isFrontCard) {
+        _initVideo();
+      }
     } else {
-      _imageFuture = widget.asset.fileData;
+      _imageFuture = _photoLoadFuture();
+    }
+  }
+
+  void _disposeVideoController() {
+    _videoController?.removeListener(_onVideoPlayerTick);
+    final c = _videoController;
+    _videoController = null;
+    c?.dispose();
+    _initialized = false;
+  }
+
+  void _onVideoPlayerTick() {
+    final c = _videoController;
+    if (c == null || !mounted) return;
+    if (!c.value.isInitialized) return;
+    if (c.value.hasError) {
+      c.removeListener(_onVideoPlayerTick);
+      final msg = c.value.errorDescription;
+      c.dispose();
+      _videoController = null;
+      setState(() {
+        _initialized = false;
+        _videoError = msg ?? 'Playback error';
+      });
     }
   }
 
   Future<void> _initVideo() async {
-    final path = await NativeGalleryHelper.fetchFilePath(widget.asset.id);
-    if (path != null && mounted) {
-      _videoController = VideoPlayerController.file(File(path));
-      await _videoController!.initialize();
-      await _videoController!.setVolume(0.0);
-      await _videoController!.setLooping(true);
-      if (mounted) {
-        setState(() {
-          _initialized = true;
-        });
-        if (widget.isFrontCard) {
-          _videoController!.play();
+    if (!mounted || !widget.isFrontCard) return;
+
+    setState(() {
+      _videoError = null;
+    });
+
+    String? path;
+    try {
+      path = _sessionVideoPathCache[widget.asset.id];
+      if (path == null) {
+        path = await NativeGalleryHelper.fetchFilePath(widget.asset.id);
+        if (path != null) {
+          _sessionVideoPathCache[widget.asset.id] = path;
         }
       }
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _videoError = 'Could not access video.';
+      });
+      return;
     }
+
+    if (!mounted) return;
+    if (path == null) {
+      setState(() {
+        _videoError = 'Could not access video.';
+      });
+      return;
+    }
+
+    _disposeVideoController();
+    if (!mounted) return;
+
+    final controller = VideoPlayerController.file(File(path));
+    _videoController = controller;
+    controller.addListener(_onVideoPlayerTick);
+
+    try {
+      await controller.initialize();
+      if (!mounted) {
+        controller.removeListener(_onVideoPlayerTick);
+        controller.dispose();
+        _videoController = null;
+        return;
+      }
+      await controller.setVolume(0.0);
+      await controller.setLooping(true);
+      setState(() {
+        _initialized = true;
+        _videoError = null;
+      });
+      controller.play();
+    } catch (_) {
+      controller.removeListener(_onVideoPlayerTick);
+      controller.dispose();
+      _videoController = null;
+      if (!mounted) return;
+      setState(() {
+        _initialized = false;
+        _videoError = 'Video failed to load.';
+      });
+    }
+  }
+
+  void _retryVideo() {
+    _disposeVideoController();
+    _initVideo();
   }
 
   @override
   void didUpdateWidget(SwipifyMediaWidget oldWidget) {
     super.didUpdateWidget(oldWidget);
-    
+
     // Safely refresh completely if a completely different asset was injected into this exact positional widget state
     if (widget.asset.id != oldWidget.asset.id) {
       if (widget.asset.isVideo) {
+        _videoController?.removeListener(_onVideoPlayerTick);
         _videoController?.dispose();
         _videoController = null;
         _initialized = false;
-        _initVideo();
+        _videoError = null;
+        _videoPosterFuture = NativeGalleryHelper.fetchThumbnail(
+          widget.asset.id,
+          width: _deckThumbExtent,
+          height: _deckThumbExtent,
+        );
+        if (widget.isFrontCard) {
+          _initVideo();
+        }
       } else {
+        _videoController?.removeListener(_onVideoPlayerTick);
         _videoController?.dispose();
         _videoController = null;
+        _videoError = null;
         setState(() {
-          _imageFuture = widget.asset.fileData;
+          _imageFuture = _photoLoadFuture();
         });
       }
       return;
     }
 
-    if (widget.asset.isVideo && _videoController != null) {
+    if (!widget.asset.isVideo &&
+        widget.isFrontCard != oldWidget.isFrontCard) {
+      setState(() {
+        _imageFuture = _photoLoadFuture();
+      });
+      return;
+    }
+
+    if (widget.asset.isVideo) {
       if (widget.isFrontCard && !oldWidget.isFrontCard) {
-        _videoController!.play();
+        if (!_initialized) {
+          _initVideo();
+        } else {
+          _videoController?.play();
+        }
       } else if (!widget.isFrontCard && oldWidget.isFrontCard) {
-        _videoController!.pause();
+        _videoController?.removeListener(_onVideoPlayerTick);
+        _videoController?.dispose();
+        _videoController = null;
+        _initialized = false;
+        _videoError = null;
+        setState(() {});
       }
     }
   }
 
   @override
   void dispose() {
+    _videoController?.removeListener(_onVideoPlayerTick);
     _videoController?.dispose();
     super.dispose();
   }
@@ -498,37 +1016,127 @@ class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
   Widget build(BuildContext context) {
     if (widget.asset.isVideo) {
       if (!_initialized || _videoController == null) {
-        return const Center(child: CircularProgressIndicator());
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            FutureBuilder<Uint8List?>(
+              future: _videoPosterFuture,
+              builder: (context, snapshot) {
+                if (snapshot.connectionState == ConnectionState.waiting &&
+                    snapshot.data == null) {
+                  if (widget.isFrontCard) {
+                    return const SizedBox.shrink();
+                  }
+                  return const Center(child: CircularProgressIndicator());
+                }
+                final bytes = snapshot.data;
+                if (bytes != null && bytes.isNotEmpty) {
+                  return Center(
+                    child: Image.memory(
+                      bytes,
+                      fit: BoxFit.contain,
+                      gaplessPlayback: true,
+                    ),
+                  );
+                }
+                return const Center(
+                  child: Icon(Icons.videocam, size: 64, color: Colors.grey),
+                );
+              },
+            ),
+            if (widget.isFrontCard && _videoError == null)
+              Positioned(
+                top: 12,
+                right: 12,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: Colors.black45,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: const Padding(
+                    padding: EdgeInsets.all(8),
+                    child: SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white70,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            if (widget.isFrontCard && _videoError != null)
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      color: Colors.black54,
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 20,
+                        vertical: 16,
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _videoError!,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 15,
+                            ),
+                          ),
+                          const SizedBox(height: 12),
+                          TextButton(
+                            onPressed: _retryVideo,
+                            child: const Text('Retry'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        );
       }
       return Stack(
         fit: StackFit.expand,
         children: [
-          FittedBox(
-            fit: BoxFit.cover,
-            child: SizedBox(
-              width: _videoController!.value.size.width,
-              height: _videoController!.value.size.height,
-              child: VideoPlayer(_videoController!),
-            ),
-          ),
-          SafeArea(
-            child: Align(
-              alignment: Alignment.topRight,
-              child: Padding(
-                padding: const EdgeInsets.only(top: 80, right: 16),
-                child: IconButton(
-                  icon: Icon(
-                    _isMuted ? Icons.volume_off : Icons.volume_up,
-                    color: Colors.white,
-                  ),
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.black45,
-                  ),
-                  onPressed: _toggleMute,
-                ),
+          Center(
+            child: FittedBox(
+              fit: BoxFit.contain,
+              child: SizedBox(
+                width: _videoController!.value.size.width,
+                height: _videoController!.value.size.height,
+                child: VideoPlayer(_videoController!),
               ),
             ),
           ),
+          if (widget.isFrontCard)
+            SafeArea(
+              child: Align(
+                alignment: Alignment.topRight,
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 80, right: 16),
+                  child: IconButton(
+                    icon: Icon(
+                      _isMuted ? Icons.volume_off : Icons.volume_up,
+                      color: Colors.white,
+                    ),
+                    style: IconButton.styleFrom(
+                      backgroundColor: Colors.black45,
+                    ),
+                    onPressed: _toggleMute,
+                  ),
+                ),
+              ),
+            ),
         ],
       );
     }
@@ -544,10 +1152,12 @@ class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
           return const Center(child: Icon(Icons.broken_image, size: 64, color: Colors.grey));
         }
 
-        return Image.memory(
-          snapshot.data!,
-          fit: BoxFit.cover,
-          gaplessPlayback: true,
+        return Center(
+          child: Image.memory(
+            snapshot.data!,
+            fit: BoxFit.contain,
+            gaplessPlayback: true,
+          ),
         );
       },
     );

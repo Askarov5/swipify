@@ -1,6 +1,7 @@
 import Cocoa
 import FlutterMacOS
 import Photos
+import AVFoundation
 
 @main
 class AppDelegate: FlutterAppDelegate {
@@ -150,13 +151,54 @@ class SwipifyGalleryService: NSObject, FlutterPlugin {
       options.version = .original
       
       PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { avAsset, _, _ in
-        if let urlAsset = avAsset as? AVURLAsset {
-          DispatchQueue.main.async { result(urlAsset.url.path) }
-        } else {
+        guard let avAsset = avAsset else {
           DispatchQueue.main.async { result(nil) }
+          return
+        }
+
+        if let urlAsset = avAsset as? AVURLAsset, urlAsset.url.isFileURL {
+          let path = urlAsset.url.path
+          if FileManager.default.fileExists(atPath: path) {
+            DispatchQueue.main.async { result(path) }
+            return
+          }
+        }
+
+        self.exportVideoToTempFile(asset: avAsset, assetId: id) { path in
+          DispatchQueue.main.async { result(path) }
         }
       }
     }
+  }
+
+  private func exportVideoToTempFile(asset: AVAsset, assetId: String, completion: @escaping (String?) -> Void) {
+    DispatchQueue.global(qos: .userInitiated).async {
+      let outURL = self.makeTempVideoURL(assetId: assetId)
+      try? FileManager.default.removeItem(at: outURL)
+
+      guard let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetHighestQuality) else {
+        completion(nil)
+        return
+      }
+      exportSession.outputURL = outURL
+      exportSession.outputFileType = .mp4
+      exportSession.shouldOptimizeForNetworkUse = false
+
+      exportSession.exportAsynchronously {
+        if exportSession.status == .completed {
+          completion(outURL.path)
+        } else {
+          completion(nil)
+        }
+      }
+    }
+  }
+
+  private func makeTempVideoURL(assetId: String) -> URL {
+    let safe = assetId.replacingOccurrences(of: "/", with: "_")
+      .replacingOccurrences(of: ":", with: "_")
+    return FileManager.default.temporaryDirectory
+      .appendingPathComponent("swipify_vid_\(safe).mp4")
   }
 
   private func deletePhotos(call: FlutterMethodCall, result: @escaping FlutterResult) {
