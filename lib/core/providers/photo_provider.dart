@@ -152,10 +152,30 @@ final batchedMediaProvider = Provider<AsyncValue<List<PhotoBatch>>>((ref) {
   });
 });
 
+/// One swipe decision in chronological order (LIFO undo).
+class SwipeDecision {
+  final String id;
+  final bool isDelete;
+
+  const SwipeDecision({required this.id, required this.isDelete});
+
+  Map<String, dynamic> toJson() => {'id': id, 'del': isDelete};
+
+  factory SwipeDecision.fromJson(Map<String, dynamic> m) {
+    return SwipeDecision(
+      id: m['id'] as String,
+      isDelete: m['del'] as bool,
+    );
+  }
+}
+
 class SwipeSessionState {
-  final List<SwipifyPhoto> remainingAssets;
-  final List<SwipifyPhoto> keepQueue;
-  final List<SwipifyPhoto> deleteQueue;
+  /// Immutable snapshot order for this session; front card is [remainingAssets.last].
+  final List<SwipifyPhoto> sessionBatchOrder;
+
+  /// Chronological decisions; length is resume depth (prefix model).
+  final List<SwipeDecision> decisions;
+
   final bool isCommitted;
 
   /// Batch key from [PhotoBatch.id] while this session is active.
@@ -166,27 +186,36 @@ class SwipeSessionState {
   final bool keepsPersistedToLibrary;
 
   SwipeSessionState({
-    required this.remainingAssets,
-    this.keepQueue = const [],
-    this.deleteQueue = const [],
+    this.sessionBatchOrder = const [],
+    this.decisions = const [],
     this.isCommitted = false,
     this.activeBatchId,
     this.keepsPersistedToLibrary = false,
   });
 
+  /// Not-yet-reviewed slice: prefix of [sessionBatchOrder] of length `L - decisions.length`.
+  List<SwipifyPhoto> get remainingAssets {
+    final L = sessionBatchOrder.length;
+    final n = decisions.length;
+    if (n >= L) return [];
+    return sessionBatchOrder.sublist(0, L - n);
+  }
+
+  int get keepCount => decisions.where((d) => !d.isDelete).length;
+
+  int get deleteCount => decisions.where((d) => d.isDelete).length;
+
   SwipeSessionState copyWith({
-    List<SwipifyPhoto>? remainingAssets,
-    List<SwipifyPhoto>? keepQueue,
-    List<SwipifyPhoto>? deleteQueue,
+    List<SwipifyPhoto>? sessionBatchOrder,
+    List<SwipeDecision>? decisions,
     bool? isCommitted,
     String? activeBatchId,
     bool clearActiveBatchId = false,
     bool? keepsPersistedToLibrary,
   }) {
     return SwipeSessionState(
-      remainingAssets: remainingAssets ?? this.remainingAssets,
-      keepQueue: keepQueue ?? this.keepQueue,
-      deleteQueue: deleteQueue ?? this.deleteQueue,
+      sessionBatchOrder: sessionBatchOrder ?? this.sessionBatchOrder,
+      decisions: decisions ?? this.decisions,
       isCommitted: isCommitted ?? this.isCommitted,
       activeBatchId:
           clearActiveBatchId ? null : (activeBatchId ?? this.activeBatchId),
@@ -198,16 +227,16 @@ class SwipeSessionState {
 
 class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
   static String _draftPrefsKey(String batchId) =>
-      'swipify_swipe_draft_v1_${batchId.hashCode}';
+      'swipify_swipe_draft_${batchId.hashCode}';
 
   @override
   SwipeSessionState build() {
-    return SwipeSessionState(remainingAssets: []);
+    return SwipeSessionState();
   }
 
   void init(List<SwipifyPhoto> assets, String batchId) {
     state = SwipeSessionState(
-      remainingAssets: List.from(assets),
+      sessionBatchOrder: List.from(assets),
       activeBatchId: batchId,
     );
   }
@@ -216,37 +245,37 @@ class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
   void tryRestoreDraft(PhotoBatch batch, List<SwipifyPhoto> library) {
     if (state.activeBatchId != batch.id) return;
     final prefs = ref.read(sharedPreferencesProvider);
-    final raw = prefs.getString(_draftPrefsKey(batch.id));
+    final key = _draftPrefsKey(batch.id);
+
+    final raw = prefs.getString(key);
     if (raw == null) return;
 
     Map<String, dynamic> map;
     try {
       map = jsonDecode(raw) as Map<String, dynamic>;
     } catch (_) {
-      prefs.remove(_draftPrefsKey(batch.id));
+      prefs.remove(key);
       return;
     }
 
-    final rIds = List<String>.from(map['r'] as List? ?? const []);
-    final kIds = List<String>.from(map['k'] as List? ?? const []);
-    final dIds = List<String>.from(map['d'] as List? ?? const []);
+    final oIds = List<String>.from(map['o'] as List? ?? const []);
+    final decRaw = map['dec'] as List? ?? const [];
     final kp = map['kp'] as bool? ?? false;
 
     final batchSet = batch.allAssetIds.toSet();
-    final allDraftIds = <String>{...rIds, ...kIds, ...dIds};
-    if (allDraftIds.isEmpty) return;
-    if (!allDraftIds.every(batchSet.contains)) {
-      prefs.remove(_draftPrefsKey(batch.id));
+    if (oIds.isEmpty) return;
+    if (!oIds.every(batchSet.contains)) {
+      prefs.remove(key);
       return;
     }
 
     final lookup = {for (final p in library) p.id: p};
-    List<SwipifyPhoto>? resolve(List<String> ids) {
+    List<SwipifyPhoto>? resolveOrder(List<String> ids) {
       final out = <SwipifyPhoto>[];
       for (final id in ids) {
         final p = lookup[id];
         if (p == null) {
-          prefs.remove(_draftPrefsKey(batch.id));
+          prefs.remove(key);
           return null;
         }
         out.add(p);
@@ -254,17 +283,49 @@ class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
       return out;
     }
 
-    final remaining = resolve(rIds);
-    if (remaining == null) return;
-    final keep = resolve(kIds);
-    if (keep == null) return;
-    final del = resolve(dIds);
-    if (del == null) return;
+    final order = resolveOrder(oIds);
+    if (order == null) return;
+
+    final decisions = <SwipeDecision>[];
+    for (final e in decRaw) {
+      if (e is! Map) {
+        prefs.remove(key);
+        return;
+      }
+      try {
+        decisions.add(
+          SwipeDecision.fromJson(Map<String, dynamic>.from(e)),
+        );
+      } catch (_) {
+        prefs.remove(key);
+        return;
+      }
+    }
+
+    final orderIds = oIds.toSet();
+    for (final d in decisions) {
+      if (!orderIds.contains(d.id)) {
+        prefs.remove(key);
+        return;
+      }
+    }
+
+    if (decisions.length > order.length) {
+      prefs.remove(key);
+      return;
+    }
+
+    for (var i = 0; i < decisions.length; i++) {
+      final expectedId = order[order.length - 1 - i].id;
+      if (decisions[i].id != expectedId) {
+        prefs.remove(key);
+        return;
+      }
+    }
 
     state = state.copyWith(
-      remainingAssets: remaining,
-      keepQueue: keep,
-      deleteQueue: del,
+      sessionBatchOrder: order,
+      decisions: decisions,
       keepsPersistedToLibrary: kp,
       isCommitted: false,
     );
@@ -281,9 +342,8 @@ class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
       return;
     }
     final payload = jsonEncode({
-      'r': state.remainingAssets.map((e) => e.id).toList(),
-      'k': state.keepQueue.map((e) => e.id).toList(),
-      'd': state.deleteQueue.map((e) => e.id).toList(),
+      'o': state.sessionBatchOrder.map((e) => e.id).toList(),
+      'dec': state.decisions.map((e) => e.toJson()).toList(),
       'kp': state.keepsPersistedToLibrary,
     });
     prefs.setString(key, payload);
@@ -295,26 +355,26 @@ class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
     if (batchId != null) {
       ref.read(sharedPreferencesProvider).remove(_draftPrefsKey(batchId));
     }
-    state = SwipeSessionState(remainingAssets: []);
+    state = SwipeSessionState();
   }
 
-  void keepItem(SwipifyPhoto item) {
-    if (!state.remainingAssets.contains(item)) return;
+  /// Records a swipe on the current front card ([remainingAssets.last]).
+  void recordDecision(SwipifyPhoto item, {required bool delete}) {
+    final remaining = state.remainingAssets;
+    if (remaining.isEmpty) return;
+    if (remaining.last.id != item.id) return;
 
-    final nextRemaining = List<SwipifyPhoto>.from(state.remainingAssets)
-      ..remove(item);
-    final nextKeep = List<SwipifyPhoto>.from(state.keepQueue)..add(item);
-    state = state.copyWith(remainingAssets: nextRemaining, keepQueue: nextKeep);
+    state = state.copyWith(
+      decisions: [...state.decisions, SwipeDecision(id: item.id, isDelete: delete)],
+    );
     _persistDraft();
   }
 
-  void deleteItem(SwipifyPhoto item) {
-    if (!state.remainingAssets.contains(item)) return;
-
-    final nextRemaining = List<SwipifyPhoto>.from(state.remainingAssets)
-      ..remove(item);
-    final nextDelete = List<SwipifyPhoto>.from(state.deleteQueue)..add(item);
-    state = state.copyWith(remainingAssets: nextRemaining, deleteQueue: nextDelete);
+  void undoLastDecision() {
+    if (state.isCommitted || state.decisions.isEmpty) return;
+    state = state.copyWith(
+      decisions: state.decisions.sublist(0, state.decisions.length - 1),
+    );
     _persistDraft();
   }
 
@@ -324,8 +384,15 @@ class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
   Future<bool> commitSession() async {
     if (state.isCommitted) return true;
 
-    final keepIds = state.keepQueue.map((e) => e.id).toList();
-    final deleteIds = state.deleteQueue.map((e) => e.id).toList();
+    final keepIds = <String>[];
+    final deleteIds = <String>[];
+    for (final d in state.decisions) {
+      if (d.isDelete) {
+        deleteIds.add(d.id);
+      } else {
+        keepIds.add(d.id);
+      }
+    }
 
     if (!state.keepsPersistedToLibrary) {
       if (keepIds.isNotEmpty) {
@@ -342,7 +409,11 @@ class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
       return true;
     }
 
-    final deleteQueueSnapshot = List<SwipifyPhoto>.from(state.deleteQueue);
+    final photoById = {for (final p in state.sessionBatchOrder) p.id: p};
+    final deleteQueueSnapshot = deleteIds
+        .map((id) => photoById[id])
+        .whereType<SwipifyPhoto>()
+        .toList();
 
     var deleteOk = false;
     try {

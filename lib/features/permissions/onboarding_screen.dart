@@ -68,7 +68,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                           color: SwipifyTheme.primary, size: 20),
                       const SizedBox(width: 8),
                       Text(
-                        'DIGITAL CURATOR',
+                        'SWIPIFY',
                         style:
                             Theme.of(context).textTheme.displayLarge?.copyWith(
                                   fontSize: 12,

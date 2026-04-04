@@ -117,11 +117,7 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
     if (card == null || !mounted) return;
     final keep = _pendingFlyOffIsKeep;
     _pendingFlyOffCard = null;
-    if (keep) {
-      session.keepItem(card);
-    } else {
-      session.deleteItem(card);
-    }
+    session.recordDecision(card, delete: !keep);
     setState(() {
       _motion = _DeckMotion.idle;
       _dragOffset = Offset.zero;
@@ -213,7 +209,7 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
 
   bool _needsExitGuard(SwipeSessionState session) {
     if (session.isCommitted) return false;
-    return session.keepQueue.isNotEmpty || session.deleteQueue.isNotEmpty;
+    return session.decisions.isNotEmpty;
   }
 
   void _onClosePressed(bool needsExitGuard) {
@@ -226,8 +222,8 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
 
   Future<void> _showLeaveBatchDialog() async {
     final session = ref.read(swipeSessionNotifierProvider);
-    final keepCount = session.keepQueue.length;
-    final deleteCount = session.deleteQueue.length;
+    final keepCount = session.keepCount;
+    final deleteCount = session.deleteCount;
 
     if (!mounted) return;
 
@@ -361,6 +357,10 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
     final initialAssets = widget.batch.assets;
     final sessionState = ref.watch(swipeSessionNotifierProvider);
     final needsExitGuard = _needsExitGuard(sessionState);
+    final deckBusy = _motion != _DeckMotion.idle;
+    final canUndo = sessionState.decisions.isNotEmpty &&
+        !sessionState.isCommitted &&
+        !deckBusy;
 
     return PopScope(
       canPop: !needsExitGuard,
@@ -382,6 +382,16 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
           style: Theme.of(context).textTheme.titleMedium,
         ),
         centerTitle: true,
+        actions: [
+          if (canUndo)
+            IconButton(
+              tooltip: 'Undo last swipe',
+              icon: const Icon(Icons.undo, color: SwipifyTheme.onSurfaceVariant),
+              onPressed: () {
+                ref.read(swipeSessionNotifierProvider.notifier).undoLastDecision();
+              },
+            ),
+        ],
       ),
       body: Stack(
         children: [
@@ -394,15 +404,16 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
 
               final sessionState = ref.watch(swipeSessionNotifierProvider);
               final cards = sessionState.remainingAssets;
+              final deckBusy = _motion != _DeckMotion.idle;
 
-              if (cards.isEmpty && sessionState.keepQueue.isEmpty && sessionState.deleteQueue.isEmpty) {
-                // Not yet initialized
+              if (initialAssets.isNotEmpty &&
+                  sessionState.sessionBatchOrder.isEmpty) {
                 return const Center(child: CircularProgressIndicator());
               }
 
               if (cards.isEmpty) {
                 final isCommitted = sessionState.isCommitted;
-                final bool hasDeletes = sessionState.deleteQueue.isNotEmpty;
+                final bool hasDeletes = sessionState.deleteCount > 0;
                 final showDeleteRetry = !isCommitted &&
                     sessionState.keepsPersistedToLibrary &&
                     hasDeletes;
@@ -418,10 +429,25 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
                           style: const TextStyle(
                               fontSize: 24, fontWeight: FontWeight.bold)),
                       const SizedBox(height: 8),
-                      Text('Kept: ${sessionState.keepQueue.length}'),
-                      Text('To Delete: ${sessionState.deleteQueue.length}'),
+                      Text('Kept: ${sessionState.keepCount}'),
+                      Text('To Delete: ${sessionState.deleteCount}'),
                       const SizedBox(height: 24),
                       if (!isCommitted) ...[
+                        if (sessionState.decisions.isNotEmpty && !deckBusy) ...[
+                          TextButton.icon(
+                            onPressed: () {
+                              ref
+                                  .read(swipeSessionNotifierProvider.notifier)
+                                  .undoLastDecision();
+                            },
+                            icon: const Icon(Icons.undo, size: 20),
+                            label: const Text('Undo last'),
+                            style: TextButton.styleFrom(
+                              foregroundColor: SwipifyTheme.onSurfaceVariant,
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                        ],
                         if (showDeleteRetry) ...[
                           Padding(
                             padding: const EdgeInsets.symmetric(horizontal: 24),
@@ -452,7 +478,7 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
                             },
                             icon: const Icon(Icons.delete_forever),
                             label: Text(
-                                'Retry delete (${sessionState.deleteQueue.length})'),
+                                'Retry delete (${sessionState.deleteCount})'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: SwipifyTheme.secondary,
                               foregroundColor: Colors.white,
@@ -485,7 +511,7 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
                                 ? const Icon(Icons.delete_forever)
                                 : const Icon(Icons.check),
                             label: Text(hasDeletes
-                                ? 'Confirm & Delete ${sessionState.deleteQueue.length} Items'
+                                ? 'Confirm & Delete ${sessionState.deleteCount} Items'
                                 : 'Finish Batch'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: hasDeletes
@@ -525,11 +551,11 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
 
               final sessionNotifier = ref.read(swipeSessionNotifierProvider.notifier);
 
-              final total = initialAssets.length;
-              final progress = 1.0 - (cards.length / total);
+              final total = sessionState.sessionBatchOrder.length;
+              final progress =
+                  total > 0 ? 1.0 - (cards.length / total) : 0.0;
               final screenWidth = MediaQuery.sizeOf(context).width;
               final deckParallax = _effectiveParallax(screenWidth);
-              final deckBusy = _motion != _DeckMotion.idle;
 
               return Stack(
                 fit: StackFit.expand,
@@ -750,8 +776,28 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
                                     ),
                                   ),
                                   IconButton(
-                                    onPressed: () {},
-                                    icon: const Icon(Icons.info_outline, color: SwipifyTheme.onSurfaceVariant),
+                                    tooltip: 'Undo last swipe',
+                                    onPressed: (!deckBusy &&
+                                            sessionState.decisions.isNotEmpty &&
+                                            !sessionState.isCommitted)
+                                        ? () {
+                                            ref
+                                                .read(swipeSessionNotifierProvider
+                                                    .notifier)
+                                                .undoLastDecision();
+                                          }
+                                        : null,
+                                    icon: const Icon(
+                                      Icons.settings_backup_restore,
+                                      color: SwipifyTheme.onSurfaceVariant,
+                                      size: 32,
+                                    ),
+                                    style: IconButton.styleFrom(
+                                      backgroundColor: SwipifyTheme
+                                          .surfaceContainerHighest
+                                          .withValues(alpha: 0.3),
+                                      padding: const EdgeInsets.all(16),
+                                    ),
                                   ),
                                   IconButton(
                                     onPressed: deckBusy
