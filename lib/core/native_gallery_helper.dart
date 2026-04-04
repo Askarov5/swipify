@@ -1,4 +1,3 @@
-
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
@@ -29,6 +28,9 @@ class SwipifyPhoto {
 /// Manages permissions, metadata extraction, and deletions directly via iOS/macOS PHPhotoLibrary.
 class NativeGalleryHelper {
   static const _channel = MethodChannel('com.swipify/gallery');
+
+  /// Coalesces concurrent [fetchFilePath] calls for the same asset so native export temp files are not clobbered.
+  static final Map<String, Future<String?>> _filePathInflight = {};
 
   /// Fetches lightweight metadata shell for all images natively
   static Future<List<SwipifyPhoto>> fetchLibraryMetadata() async {
@@ -74,8 +76,20 @@ class NativeGalleryHelper {
     }
   }
 
-  /// Returns the actual absolute file path for a native iOS/macOS video
-  static Future<String?> fetchFilePath(String id) async {
+  /// Returns a path under app temp suitable for [VideoPlayerController.file].
+  /// Use [forceRefresh] on user retry so native always materializes a new file (avoids stale paths).
+  static Future<String?> fetchFilePath(String id, {bool forceRefresh = false}) {
+    if (forceRefresh) {
+      return _fetchFilePathOnce(id);
+    }
+    return _filePathInflight.putIfAbsent(id, () {
+      return _fetchFilePathOnce(id).whenComplete(() {
+        _filePathInflight.remove(id);
+      });
+    });
+  }
+
+  static Future<String?> _fetchFilePathOnce(String id) async {
     try {
       final Object? raw = await _channel.invokeMethod('fetchFilePath', {'id': id});
       if (raw is String && raw.isNotEmpty) return raw;

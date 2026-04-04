@@ -140,12 +140,6 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                               'Zero Uploads',
                               'No cloud needed.',
                             ),
-                            const SizedBox(height: 8),
-                            _buildBenefitRow(
-                              Icons.bolt,
-                              'Faster Review',
-                              'AI-powered sorting.',
-                            ),
                           ],
                         ),
 

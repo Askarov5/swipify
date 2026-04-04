@@ -148,31 +148,66 @@ class SwipifyGalleryService: NSObject, FlutterPlugin {
       
       let options = PHVideoRequestOptions()
       options.isNetworkAccessAllowed = true
-      options.version = .original
-      
+      /// `.current` matches the edited/rendered clip Photos shows; `.original` can yield assets that export or decode poorly.
+      options.version = .current
+
       PHImageManager.default().requestAVAsset(forVideo: asset, options: options) { avAsset, _, _ in
         guard let avAsset = avAsset else {
           DispatchQueue.main.async { result(nil) }
           return
         }
 
-        if let urlAsset = avAsset as? AVURLAsset, urlAsset.url.isFileURL {
-          let path = urlAsset.url.path
-          if FileManager.default.fileExists(atPath: path) {
-            DispatchQueue.main.async { result(path) }
-            return
-          }
-        }
-
-        self.exportVideoToTempFile(asset: avAsset, assetId: id) { path in
+        self.materializePlayableVideoPath(avAsset: avAsset, phAsset: asset, assetId: id) { path in
           DispatchQueue.main.async { result(path) }
         }
       }
     }
   }
 
+  /// Copies URL-backed library video into app temp when possible; otherwise export / resource copy.
+  /// Returning raw Photos sandbox paths to Flutter is unreliable for [VideoPlayerController].
+  private func materializePlayableVideoPath(avAsset: AVAsset, phAsset: PHAsset, assetId: String, completion: @escaping (String?) -> Void) {
+    DispatchQueue.global(qos: .userInitiated).async {
+      if let urlAsset = avAsset as? AVURLAsset, urlAsset.url.isFileURL,
+         FileManager.default.fileExists(atPath: urlAsset.url.path) {
+        if let copied = self.copyLibraryVideoToTemp(from: urlAsset.url, assetId: assetId) {
+          completion(copied)
+          return
+        }
+      }
+      self.exportVideoToTempFile(avAsset: avAsset, phAsset: phAsset, assetId: assetId, completion: completion)
+    }
+  }
+
+  private func copyLibraryVideoToTemp(from srcURL: URL, assetId: String) -> String? {
+    let safeBase = assetId.replacingOccurrences(of: "/", with: "_")
+      .replacingOccurrences(of: ":", with: "_")
+    let ext = srcURL.pathExtension.isEmpty ? "mov" : srcURL.pathExtension
+    let dest = FileManager.default.temporaryDirectory
+      .appendingPathComponent("swipify_mat_\(safeBase)_\(UUID().uuidString).\(ext)")
+    do {
+      if FileManager.default.fileExists(atPath: dest.path) {
+        try FileManager.default.removeItem(at: dest)
+      }
+      try FileManager.default.copyItem(at: srcURL, to: dest)
+      var isDir: ObjCBool = false
+      guard FileManager.default.fileExists(atPath: dest.path, isDirectory: &isDir), !isDir.boolValue else {
+        return nil
+      }
+      if let attrs = try? FileManager.default.attributesOfItem(atPath: dest.path),
+         let size = attrs[.size] as? NSNumber,
+         size.int64Value > 0 {
+        return dest.path
+      }
+    } catch {
+      NSLog("[SwipifyGallery] copyLibraryVideoToTemp: %@", error.localizedDescription)
+    }
+    return nil
+  }
+
   /// Writes a playable file under NSTemporaryDirectory when the asset is not a direct file URL (e.g. compositions).
-  private func exportVideoToTempFile(asset: AVAsset, assetId: String, completion: @escaping (String?) -> Void) {
+  /// Uses a unique filename per export to avoid clobbering concurrent [fetchFilePath] calls; falls back to PHAssetResourceManager.
+  private func exportVideoToTempFile(avAsset: AVAsset, phAsset: PHAsset, assetId: String, completion: @escaping (String?) -> Void) {
     DispatchQueue.global(qos: .userInitiated).async {
       let safeBase = assetId.replacingOccurrences(of: "/", with: "_")
         .replacingOccurrences(of: ":", with: "_")
@@ -192,10 +227,10 @@ class SwipifyGalleryService: NSObject, FlutterPlugin {
       ]
 
       for attempt in attempts {
-        let outURL = tmp.appendingPathComponent("swipify_vid_\(safeBase).\(attempt.ext)")
-        try? FileManager.default.removeItem(at: outURL)
+        let unique = UUID().uuidString
+        let outURL = tmp.appendingPathComponent("swipify_vid_\(safeBase)_\(unique).\(attempt.ext)")
 
-        guard let exportSession = AVAssetExportSession(asset: asset, presetName: attempt.preset) else {
+        guard let exportSession = AVAssetExportSession(asset: avAsset, presetName: attempt.preset) else {
           continue
         }
         guard exportSession.supportedFileTypes.contains(attempt.fileType) else {
@@ -214,9 +249,57 @@ class SwipifyGalleryService: NSObject, FlutterPlugin {
           completion(outURL.path)
           return
         }
+        let errDesc = exportSession.error?.localizedDescription ?? "nil"
+        NSLog("[SwipifyGallery] export failed preset=%@ ext=%@ status=%ld err=%@", attempt.preset, attempt.ext, exportSession.status.rawValue, errDesc)
       }
-      completion(nil)
+
+      if let path = self.copyVideoResourceToTempSync(phAsset: phAsset, assetId: assetId) {
+        completion(path)
+      } else {
+        completion(nil)
+      }
     }
+  }
+
+  private func copyVideoResourceToTempSync(phAsset: PHAsset, assetId: String) -> String? {
+    let resources = PHAssetResource.assetResources(for: phAsset)
+    let preferredTypes: [PHAssetResourceType] = [.video, .fullSizeVideo, .pairedVideo, .fullSizePairedVideo]
+    guard let videoResource = resources.first(where: { preferredTypes.contains($0.type) }) else {
+      NSLog("[SwipifyGallery] copyResource: no video resource for %@", assetId)
+      return nil
+    }
+
+    let safeBase = assetId.replacingOccurrences(of: "/", with: "_")
+      .replacingOccurrences(of: ":", with: "_")
+    let tmp = FileManager.default.temporaryDirectory
+    let outURL = tmp.appendingPathComponent("swipify_res_\(safeBase)_\(UUID().uuidString).mov")
+
+    let opts = PHAssetResourceRequestOptions()
+    opts.isNetworkAccessAllowed = true
+
+    let sem = DispatchSemaphore(value: 0)
+    var resultPath: String?
+    PHAssetResourceManager.default().writeData(for: videoResource, toFile: outURL, options: opts) { error in
+      defer { sem.signal() }
+      if let error = error {
+        NSLog("[SwipifyGallery] copyResource error: %@", error.localizedDescription)
+        return
+      }
+      var isDir: ObjCBool = false
+      guard FileManager.default.fileExists(atPath: outURL.path, isDirectory: &isDir), !isDir.boolValue else {
+        NSLog("[SwipifyGallery] copyResource: missing file %@", outURL.path)
+        return
+      }
+      if let attrs = try? FileManager.default.attributesOfItem(atPath: outURL.path),
+         let size = attrs[.size] as? NSNumber,
+         size.int64Value > 0 {
+        resultPath = outURL.path
+      } else {
+        NSLog("[SwipifyGallery] copyResource: empty file %@", outURL.path)
+      }
+    }
+    sem.wait()
+    return resultPath
   }
 
   private func makeTempVideoURL(assetId: String) -> URL {

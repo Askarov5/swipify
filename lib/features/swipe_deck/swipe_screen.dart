@@ -844,6 +844,27 @@ class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
     }
   }
 
+  /// Returns a session-cached path only if the file is still present and non-empty.
+  String? _validCachedVideoPath(String loadId) {
+    final p = _sessionVideoPathCache[loadId];
+    if (p == null) return null;
+    try {
+      final f = File(p);
+      if (!f.existsSync()) {
+        _sessionVideoPathCache.remove(loadId);
+        return null;
+      }
+      if (f.lengthSync() <= 0) {
+        _sessionVideoPathCache.remove(loadId);
+        return null;
+      }
+    } catch (_) {
+      _sessionVideoPathCache.remove(loadId);
+      return null;
+    }
+    return p;
+  }
+
   void _disposeVideoController() {
     _videoController?.removeListener(_onVideoPlayerTick);
     final c = _videoController;
@@ -868,7 +889,10 @@ class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
     }
   }
 
-  Future<void> _initVideo() async {
+  static const int _videoInitMaxAttempts = 4;
+  static const Duration _videoInitRetryDelay = Duration(milliseconds: 90);
+
+  Future<void> _initVideo({bool forceNativeRefresh = false}) async {
     if (!mounted || !widget.isFrontCard) return;
 
     /// Swipes schedule overlapping async work; only the latest [loadId] may update state.
@@ -880,9 +904,15 @@ class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
 
     String? path;
     try {
-      path = _sessionVideoPathCache[loadId];
+      if (forceNativeRefresh) {
+        _sessionVideoPathCache.remove(loadId);
+      }
+      path = forceNativeRefresh ? null : _validCachedVideoPath(loadId);
       if (path == null) {
-        path = await NativeGalleryHelper.fetchFilePath(loadId);
+        path = await NativeGalleryHelper.fetchFilePath(
+          loadId,
+          forceRefresh: forceNativeRefresh,
+        );
         if (path != null) {
           _sessionVideoPathCache[loadId] = path;
         }
@@ -903,48 +933,59 @@ class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
       return;
     }
 
-    _disposeVideoController();
-    if (!mounted || widget.asset.id != loadId) return;
+    for (var attempt = 0; attempt < _videoInitMaxAttempts; attempt++) {
+      if (!mounted || widget.asset.id != loadId) return;
 
-    final controller = VideoPlayerController.file(File(path));
-    _videoController = controller;
-    controller.addListener(_onVideoPlayerTick);
+      if (attempt > 0) {
+        await Future<void>.delayed(_videoInitRetryDelay);
+        if (!mounted || widget.asset.id != loadId) return;
+      }
 
-    try {
-      await controller.initialize();
-      if (!mounted || widget.asset.id != loadId) {
+      _disposeVideoController();
+      if (!mounted || widget.asset.id != loadId) return;
+
+      final controller = VideoPlayerController.file(File(path));
+      _videoController = controller;
+      controller.addListener(_onVideoPlayerTick);
+
+      try {
+        await controller.initialize();
+        if (!mounted || widget.asset.id != loadId) {
+          controller.removeListener(_onVideoPlayerTick);
+          await controller.dispose();
+          if (_videoController == controller) {
+            _videoController = null;
+          }
+          return;
+        }
+        await controller.setVolume(0.0);
+        await controller.setLooping(true);
+        setState(() {
+          _initialized = true;
+          _videoError = null;
+        });
+        controller.play();
+        return;
+      } catch (_) {
         controller.removeListener(_onVideoPlayerTick);
         await controller.dispose();
         if (_videoController == controller) {
           _videoController = null;
         }
-        return;
       }
-      await controller.setVolume(0.0);
-      await controller.setLooping(true);
-      setState(() {
-        _initialized = true;
-        _videoError = null;
-      });
-      controller.play();
-    } catch (_) {
-      controller.removeListener(_onVideoPlayerTick);
-      await controller.dispose();
-      if (_videoController == controller) {
-        _videoController = null;
-      }
-      if (!mounted || widget.asset.id != loadId) return;
-      _sessionVideoPathCache.remove(loadId);
-      setState(() {
-        _initialized = false;
-        _videoError = 'Video failed to load.';
-      });
     }
+
+    if (!mounted || widget.asset.id != loadId) return;
+    _sessionVideoPathCache.remove(loadId);
+    setState(() {
+      _initialized = false;
+      _videoError = 'Video failed to load.';
+    });
   }
 
   void _retryVideo() {
     _disposeVideoController();
-    _initVideo();
+    _initVideo(forceNativeRefresh: true);
   }
 
   @override
