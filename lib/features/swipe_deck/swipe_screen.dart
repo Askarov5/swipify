@@ -871,28 +871,31 @@ class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
   Future<void> _initVideo() async {
     if (!mounted || !widget.isFrontCard) return;
 
+    /// Swipes schedule overlapping async work; only the latest [loadId] may update state.
+    final String loadId = widget.asset.id;
+
     setState(() {
       _videoError = null;
     });
 
     String? path;
     try {
-      path = _sessionVideoPathCache[widget.asset.id];
+      path = _sessionVideoPathCache[loadId];
       if (path == null) {
-        path = await NativeGalleryHelper.fetchFilePath(widget.asset.id);
+        path = await NativeGalleryHelper.fetchFilePath(loadId);
         if (path != null) {
-          _sessionVideoPathCache[widget.asset.id] = path;
+          _sessionVideoPathCache[loadId] = path;
         }
       }
     } catch (_) {
-      if (!mounted) return;
+      if (!mounted || widget.asset.id != loadId) return;
       setState(() {
         _videoError = 'Could not access video.';
       });
       return;
     }
 
-    if (!mounted) return;
+    if (!mounted || widget.asset.id != loadId) return;
     if (path == null) {
       setState(() {
         _videoError = 'Could not access video.';
@@ -901,7 +904,7 @@ class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
     }
 
     _disposeVideoController();
-    if (!mounted) return;
+    if (!mounted || widget.asset.id != loadId) return;
 
     final controller = VideoPlayerController.file(File(path));
     _videoController = controller;
@@ -909,10 +912,12 @@ class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
 
     try {
       await controller.initialize();
-      if (!mounted) {
+      if (!mounted || widget.asset.id != loadId) {
         controller.removeListener(_onVideoPlayerTick);
-        controller.dispose();
-        _videoController = null;
+        await controller.dispose();
+        if (_videoController == controller) {
+          _videoController = null;
+        }
         return;
       }
       await controller.setVolume(0.0);
@@ -924,9 +929,12 @@ class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
       controller.play();
     } catch (_) {
       controller.removeListener(_onVideoPlayerTick);
-      controller.dispose();
-      _videoController = null;
-      if (!mounted) return;
+      await controller.dispose();
+      if (_videoController == controller) {
+        _videoController = null;
+      }
+      if (!mounted || widget.asset.id != loadId) return;
+      _sessionVideoPathCache.remove(loadId);
       setState(() {
         _initialized = false;
         _videoError = 'Video failed to load.';

@@ -171,26 +171,51 @@ class SwipifyGalleryService: NSObject, FlutterPlugin {
     }
   }
 
+  /// Writes a playable file under NSTemporaryDirectory when the asset is not a direct file URL (e.g. compositions).
   private func exportVideoToTempFile(asset: AVAsset, assetId: String, completion: @escaping (String?) -> Void) {
     DispatchQueue.global(qos: .userInitiated).async {
-      let outURL = self.makeTempVideoURL(assetId: assetId)
-      try? FileManager.default.removeItem(at: outURL)
+      let safeBase = assetId.replacingOccurrences(of: "/", with: "_")
+        .replacingOccurrences(of: ":", with: "_")
+      let tmp = FileManager.default.temporaryDirectory
 
-      guard let exportSession = AVAssetExportSession(asset: asset, presetName: AVAssetExportPresetHighestQuality) else {
-        completion(nil)
-        return
+      struct Attempt {
+        let preset: String
+        let ext: String
+        let fileType: AVFileType
       }
-      exportSession.outputURL = outURL
-      exportSession.outputFileType = .mp4
-      exportSession.shouldOptimizeForNetworkUse = false
+      let attempts: [Attempt] = [
+        Attempt(preset: AVAssetExportPresetHighestQuality, ext: "mp4", fileType: .mp4),
+        Attempt(preset: AVAssetExportPresetHighestQuality, ext: "mov", fileType: .mov),
+        Attempt(preset: AVAssetExportPresetMediumQuality, ext: "mp4", fileType: .mp4),
+        Attempt(preset: AVAssetExportPresetMediumQuality, ext: "mov", fileType: .mov),
+        Attempt(preset: AVAssetExportPresetPassthrough, ext: "mov", fileType: .mov),
+      ]
 
-      exportSession.exportAsynchronously {
+      for attempt in attempts {
+        let outURL = tmp.appendingPathComponent("swipify_vid_\(safeBase).\(attempt.ext)")
+        try? FileManager.default.removeItem(at: outURL)
+
+        guard let exportSession = AVAssetExportSession(asset: asset, presetName: attempt.preset) else {
+          continue
+        }
+        guard exportSession.supportedFileTypes.contains(attempt.fileType) else {
+          continue
+        }
+        exportSession.outputURL = outURL
+        exportSession.outputFileType = attempt.fileType
+        exportSession.shouldOptimizeForNetworkUse = false
+
+        let sem = DispatchSemaphore(value: 0)
+        exportSession.exportAsynchronously {
+          sem.signal()
+        }
+        sem.wait()
         if exportSession.status == .completed {
           completion(outURL.path)
-        } else {
-          completion(nil)
+          return
         }
       }
+      completion(nil)
     }
   }
 

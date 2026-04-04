@@ -77,7 +77,9 @@ class NativeGalleryHelper {
   /// Returns the actual absolute file path for a native iOS/macOS video
   static Future<String?> fetchFilePath(String id) async {
     try {
-      return await _channel.invokeMethod<String>('fetchFilePath', {'id': id});
+      final Object? raw = await _channel.invokeMethod('fetchFilePath', {'id': id});
+      if (raw is String && raw.isNotEmpty) return raw;
+      return null;
     } catch (e) {
       debugPrint('File Path fetch error: $e');
       return null;
