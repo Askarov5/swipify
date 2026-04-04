@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:swipify/core/native_gallery_helper.dart';
+import 'package:swipify/core/providers/impact_stats_provider.dart';
 import 'package:swipify/core/providers/preferences_provider.dart';
 
 enum GroupingMode { month, date }
@@ -337,8 +338,11 @@ class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
     if (deleteIds.isEmpty) {
       state = state.copyWith(isCommitted: true);
       _persistDraft();
+      ref.read(impactStatsProvider.notifier).recordCommitCompleted();
       return true;
     }
+
+    final deleteQueueSnapshot = List<SwipifyPhoto>.from(state.deleteQueue);
 
     var deleteOk = false;
     try {
@@ -348,10 +352,17 @@ class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
     }
 
     if (deleteOk) {
+      final photoCount =
+          deleteQueueSnapshot.where((e) => !e.isVideo).length;
+      final videoCount = deleteQueueSnapshot.where((e) => e.isVideo).length;
+      ref
+          .read(impactStatsProvider.notifier)
+          .recordSuccessfulDeletes(photos: photoCount, videos: videoCount);
       ref.read(reviewedIdsProvider.notifier).addIds(deleteIds);
       ref.invalidate(allMediaProvider);
       state = state.copyWith(isCommitted: true);
       _persistDraft();
+      ref.read(impactStatsProvider.notifier).recordCommitCompleted();
       return true;
     }
 

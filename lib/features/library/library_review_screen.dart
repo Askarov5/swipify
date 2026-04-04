@@ -44,7 +44,7 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen> {
             : Text(
                 _selectedTab == _MainNavTab.email
                     ? 'Email Cleanup'
-                    : 'Your Impact',
+                    : 'Swipify Impacts',
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                       fontWeight: FontWeight.w600,
                     ),
