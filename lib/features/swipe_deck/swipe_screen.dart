@@ -1,6 +1,7 @@
 import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/native_gallery_helper.dart';
@@ -11,6 +12,7 @@ import 'swipe_deck_bottom_bar.dart';
 import 'swipe_deck_progress_overlay.dart';
 import 'swipe_deck_stack.dart';
 import 'swipe_leave_batch_dialog.dart';
+import 'swipe_physics.dart';
 
 class SwipeScreen extends ConsumerStatefulWidget {
   final PhotoBatch batch;
@@ -47,6 +49,9 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
 
   SwipifyPhoto? _pendingFlyOffCard;
   bool _pendingFlyOffIsKeep = false;
+
+  /// One haptic when |dx| crosses the distance commit threshold during a drag.
+  bool _distanceThresholdHapticSent = false;
 
   @override
   void initState() {
@@ -139,6 +144,7 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
     final sign = keep ? 1.0 : -1.0;
     _deckController.stop();
     final startParallax = _parallaxFromDrag(screenWidth);
+    HapticFeedback.lightImpact();
     setState(() {
       _isDragging = false;
       _flyStartDrag = _dragOffset;
@@ -162,13 +168,24 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
   void _onPanStart(DragStartDetails details) {
     if (_motion != SwipeDeckMotion.idle) return;
     _deckController.stop();
+    _distanceThresholdHapticSent = false;
     setState(() => _isDragging = true);
   }
 
   void _onPanUpdate(DragUpdateDetails details) {
     if (_motion != SwipeDeckMotion.idle) return;
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final distanceThreshold =
+        screenWidth * SwipeDeckGesturePolicy.commitWidthFraction;
     setState(() {
-      _dragOffset += details.delta;
+      final next = _dragOffset + details.delta;
+      if (!_distanceThresholdHapticSent &&
+          next.dx.abs() > distanceThreshold &&
+          _dragOffset.dx.abs() <= distanceThreshold) {
+        HapticFeedback.selectionClick();
+        _distanceThresholdHapticSent = true;
+      }
+      _dragOffset = next;
     });
   }
 
@@ -179,13 +196,19 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
 
     final screenWidth = MediaQuery.sizeOf(context).width;
 
-    if (_dragOffset.dx.abs() > screenWidth * 0.3) {
-      final swipedRight = _dragOffset.dx > 0;
+    if (SwipeDeckGesturePolicy.shouldCompleteSwipe(
+          screenWidth: screenWidth,
+          dragDx: _dragOffset.dx,
+          velocityPixelsPerSecond: details.velocity.pixelsPerSecond,
+        )) {
+      final keep = SwipeDeckGesturePolicy.keepIfCompleting(
+        dragDx: _dragOffset.dx,
+      );
       _startFlyOff(
         context: context,
         session: session,
         card: frontCard,
-        keep: swipedRight,
+        keep: keep,
       );
     } else {
       final start = _dragOffset;
