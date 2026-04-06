@@ -32,6 +32,14 @@ final class LibraryThumbnailCache {
     });
   }
 
+  /// Drop cached entries for [ids] (e.g. after native delete).
+  static void removeIds(Iterable<String> ids) {
+    for (final id in ids) {
+      _bytes.remove(id);
+      _futures.remove(id);
+    }
+  }
+
   /// Optional: release memory (e.g. on logout); next load will refetch.
   static void clear() {
     _bytes.clear();

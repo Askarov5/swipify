@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -93,6 +95,53 @@ void main() {
       await tester.pump();
       expect(session.state.remainingAssets, hasLength(1));
       expect(session.state.remainingAssets.single.id, 'a');
+    });
+
+    testWidgets('warms next video: fetchFilePath runs while photo is front',
+        (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+
+      final temp = File(
+        '${Directory.systemTemp.path}/swipify_warm_test_${DateTime.now().microsecondsSinceEpoch}.mp4',
+      )..writeAsBytesSync([0, 0, 0, 0], flush: true);
+
+      final mock = GalleryChannelMock(
+        fileBytes: kTestPng1x1,
+        thumbnailBytes: kTestPng1x1,
+        filePath: temp.path,
+      )..register();
+      addTearDown(() {
+        mock.unregister();
+        if (temp.existsSync()) temp.deleteSync();
+      });
+
+      final video = SwipifyPhoto(
+        id: 'warm-v',
+        creationTime: DateTime.utc(2024, 2, 1),
+        isVideo: true,
+      );
+      final photo = SwipifyPhoto(
+        id: 'warm-p',
+        creationTime: DateTime.utc(2024, 2, 2),
+        isVideo: false,
+      );
+
+      await tester.pumpWidget(
+        ProviderScope(
+          overrides: [
+            sharedPreferencesProvider.overrideWithValue(prefs),
+          ],
+          child: MaterialApp(
+            home: _SwipeDeckHarness(photos: [video, photo]),
+          ),
+        ),
+      );
+
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 50));
+
+      expect(mock.fetchFilePathCallCount, greaterThanOrEqualTo(1));
     });
   });
 }

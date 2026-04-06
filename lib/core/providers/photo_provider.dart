@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:swipify/core/library_thumbnail_cache.dart';
 import 'package:swipify/core/native_gallery_helper.dart';
 import 'package:swipify/core/providers/impact_stats_provider.dart';
 import 'package:swipify/core/providers/preferences_provider.dart';
@@ -146,44 +147,54 @@ final allMediaProvider = FutureProvider<List<SwipifyPhoto>>((ref) async {
   return metadata;
 });
 
+List<PhotoBatch> _photoBatchesForAssets(
+  List<SwipifyPhoto> assets,
+  GroupingMode groupingMode,
+  Set<String> reviewedIds,
+) {
+  final grouped = <String, List<SwipifyPhoto>>{};
+  for (final asset in assets) {
+    final date = asset.creationTime;
+    final key = groupingMode == GroupingMode.month
+        ? _formatMonth(date)
+        : _formatDate(date);
+    grouped.putIfAbsent(key, () => []).add(asset);
+  }
+
+  return grouped.entries.map((e) {
+    final allBatchAssets = e.value;
+    final unreviewedAssets = allBatchAssets
+        .where((asset) => !reviewedIds.contains(asset.id))
+        .toList();
+
+    final totalCount = allBatchAssets.length;
+    final reviewedCount = totalCount - unreviewedAssets.length;
+    final allAssetIds = allBatchAssets.map((a) => a.id).toList();
+
+    return PhotoBatch(
+      id: e.key,
+      title: e.key,
+      assets: unreviewedAssets,
+      allAssetIds: allAssetIds,
+      totalCount: totalCount,
+      reviewedCount: reviewedCount,
+      isFullyReviewed: unreviewedAssets.isEmpty,
+    );
+  }).toList();
+}
+
 final batchedMediaProvider = Provider<AsyncValue<List<PhotoBatch>>>((ref) {
   final allMediaAsync = ref.watch(allMediaProvider);
   final groupingMode = ref.watch(groupingModeProvider);
   final reviewedIds = ref.watch(reviewedIdsProvider);
 
-  return allMediaAsync.whenData((assets) {
-    final grouped = <String, List<SwipifyPhoto>>{};
-    for (final asset in assets) {
-      final date = asset.creationTime;
-      final key = groupingMode == GroupingMode.month
-          ? _formatMonth(date)
-          : _formatDate(date);
-      grouped.putIfAbsent(key, () => []).add(asset);
-    }
-
-    final batches = grouped.entries.map((e) {
-      final allBatchAssets = e.value;
-      final unreviewedAssets = allBatchAssets
-          .where((asset) => !reviewedIds.contains(asset.id))
-          .toList();
-
-      final totalCount = allBatchAssets.length;
-      final reviewedCount = totalCount - unreviewedAssets.length;
-      final allAssetIds = allBatchAssets.map((a) => a.id).toList();
-
-      return PhotoBatch(
-        id: e.key,
-        title: e.key,
-        assets: unreviewedAssets,
-        allAssetIds: allAssetIds,
-        totalCount: totalCount,
-        reviewedCount: reviewedCount,
-        isFullyReviewed: unreviewedAssets.isEmpty,
-      );
-    }).toList();
-
-    return batches;
-  });
+  return allMediaAsync.when(
+    data: (assets) => AsyncData<List<PhotoBatch>>(
+      _photoBatchesForAssets(assets, groupingMode, reviewedIds),
+    ),
+    error: (e, st) => AsyncError<List<PhotoBatch>>(e, st),
+    loading: () => const AsyncLoading<List<PhotoBatch>>(),
+  );
 });
 
 /// One swipe decision in chronological order (LIFO undo).
@@ -437,6 +448,7 @@ class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
         .read(impactStatsProvider.notifier)
         .recordSuccessfulDeletes(photos: photoCount, videos: videoCount);
     ref.read(reviewedIdsProvider.notifier).addIds(deleteIds);
+    LibraryThumbnailCache.removeIds(deleteIds);
     ref.invalidate(allMediaProvider);
   }
 
