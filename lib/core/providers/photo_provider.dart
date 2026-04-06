@@ -91,9 +91,43 @@ String _formatDate(DateTime date) {
   return '${months[date.month - 1]} ${date.day}, ${date.year}';
 }
 
-final photoPermissionProvider = FutureProvider<String>((ref) async {
-  return await NativeGalleryHelper.requestPermission();
-});
+class PhotoPermissionNotifier extends AsyncNotifier<String> {
+  @override
+  Future<String> build() async {
+    return NativeGalleryHelper.checkPermission();
+  }
+
+  /// Re-read status from the OS (e.g. app resumed from Settings).
+  Future<void> syncFromSystem() async {
+    final next = await NativeGalleryHelper.checkPermission();
+    state = AsyncData(next);
+    ref.invalidate(allMediaProvider);
+  }
+
+  /// [notDetermined]: system permission dialog. [denied]/[restricted]: Settings.
+  Future<void> requestFullAccess() async {
+    var status = switch (state) {
+      AsyncData<String>(:final value) => value,
+      _ => await NativeGalleryHelper.checkPermission(),
+    };
+    if (NativeGalleryHelper.isGranted(status)) {
+      state = AsyncData(status);
+      ref.invalidate(allMediaProvider);
+      return;
+    }
+    if (NativeGalleryHelper.isDenied(status) || status == 'restricted') {
+      await NativeGalleryHelper.openSettings();
+      return;
+    }
+    state = const AsyncValue.loading();
+    status = await NativeGalleryHelper.requestPermission();
+    state = AsyncData(status);
+    ref.invalidate(allMediaProvider);
+  }
+}
+
+final photoPermissionProvider =
+    AsyncNotifierProvider<PhotoPermissionNotifier, String>(PhotoPermissionNotifier.new);
 
 final allMediaProvider = FutureProvider<List<SwipifyPhoto>>((ref) async {
   final permission = await ref.watch(photoPermissionProvider.future);
@@ -181,7 +215,9 @@ class SwipeSessionState {
   /// Batch key from [PhotoBatch.id] while this session is active.
   final String? activeBatchId;
 
-  /// True once [SwipeSessionNotifier.commitSession] has written keep IDs to [reviewedIdsProvider]
+  /// True once keeps have been written to [reviewedIdsProvider] via
+  /// [SwipeSessionNotifier.commitSession], [SwipeSessionNotifier.saveKeepsAndPersistDraft],
+  /// or [SwipeSessionNotifier.applyPendingDeletesSaveAndCompact]
   /// (may be true while deletes are still pending or failed).
   final bool keepsPersistedToLibrary;
 
@@ -225,10 +261,12 @@ class SwipeSessionState {
   }
 }
 
-class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
-  static String _draftPrefsKey(String batchId) =>
-      'swipify_swipe_draft_${batchId.hashCode}';
+/// SharedPreferences key for a persisted swipe draft for [batchId].
+/// Must match [SwipeSessionNotifier] storage.
+String swipeSessionDraftPrefsKey(String batchId) =>
+    'swipify_swipe_draft_${batchId.hashCode}';
 
+class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
   @override
   SwipeSessionState build() {
     return SwipeSessionState();
@@ -245,7 +283,7 @@ class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
   void tryRestoreDraft(PhotoBatch batch, List<SwipifyPhoto> library) {
     if (state.activeBatchId != batch.id) return;
     final prefs = ref.read(sharedPreferencesProvider);
-    final key = _draftPrefsKey(batch.id);
+    final key = swipeSessionDraftPrefsKey(batch.id);
 
     final raw = prefs.getString(key);
     if (raw == null) return;
@@ -336,7 +374,7 @@ class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
     final batchId = state.activeBatchId;
     if (batchId == null) return;
     final prefs = ref.read(sharedPreferencesProvider);
-    final key = _draftPrefsKey(batchId);
+    final key = swipeSessionDraftPrefsKey(batchId);
     if (state.isCommitted) {
       prefs.remove(key);
       return;
@@ -353,7 +391,7 @@ class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
   void discardSession() {
     final batchId = state.activeBatchId;
     if (batchId != null) {
-      ref.read(sharedPreferencesProvider).remove(_draftPrefsKey(batchId));
+      ref.read(sharedPreferencesProvider).remove(swipeSessionDraftPrefsKey(batchId));
     }
     state = SwipeSessionState();
   }
@@ -378,29 +416,118 @@ class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
     _persistDraft();
   }
 
+  void _persistKeepsIfNeeded() {
+    if (state.keepsPersistedToLibrary) return;
+    final keepIds =
+        state.decisions.where((d) => !d.isDelete).map((d) => d.id).toList();
+    if (keepIds.isNotEmpty) {
+      ref.read(reviewedIdsProvider.notifier).addIds(keepIds);
+    }
+    state = state.copyWith(keepsPersistedToLibrary: true);
+    _persistDraft();
+  }
+
+  void _recordSuccessfulGalleryDeletes(
+    List<SwipifyPhoto> deleteQueueSnapshot,
+    List<String> deleteIds,
+  ) {
+    final photoCount = deleteQueueSnapshot.where((e) => !e.isVideo).length;
+    final videoCount = deleteQueueSnapshot.where((e) => e.isVideo).length;
+    ref
+        .read(impactStatsProvider.notifier)
+        .recordSuccessfulDeletes(photos: photoCount, videos: videoCount);
+    ref.read(reviewedIdsProvider.notifier).addIds(deleteIds);
+    ref.invalidate(allMediaProvider);
+  }
+
+  void _compactAfterSuccessfulDeletes(Set<String> deletedIds) {
+    final newOrder = state.sessionBatchOrder
+        .where((p) => !deletedIds.contains(p.id))
+        .toList();
+    final newDecisions = state.decisions
+        .where((d) => !(d.isDelete && deletedIds.contains(d.id)))
+        .toList();
+    state = state.copyWith(
+      sessionBatchOrder: newOrder,
+      decisions: newDecisions,
+    );
+  }
+
+  /// Writes keep IDs to [reviewedIdsProvider] and persists draft (no gallery deletes).
+  /// Use when leaving mid-batch with no pending delete queue.
+  Future<bool> saveKeepsAndPersistDraft() async {
+    if (state.isCommitted) return true;
+    _persistKeepsIfNeeded();
+    _persistDraft();
+    return true;
+  }
+
+  /// Deletes pending items from the library and compacts session state so the user
+  /// can resume later. If no assets remain, finalizes like a completed batch.
+  ///
+  /// Returns `false` if [deleteIds] is empty or delete failed. On failure, keeps
+  /// may already be persisted; draft is saved.
+  Future<bool> applyPendingDeletesSaveAndCompact() async {
+    if (state.isCommitted) return true;
+
+    final deleteIds =
+        state.decisions.where((d) => d.isDelete).map((d) => d.id).toList();
+    if (deleteIds.isEmpty) return false;
+
+    _persistKeepsIfNeeded();
+
+    final photoById = {for (final p in state.sessionBatchOrder) p.id: p};
+    final deleteQueueSnapshot = deleteIds
+        .map((id) => photoById[id])
+        .whereType<SwipifyPhoto>()
+        .toList();
+
+    var deleteOk = false;
+    try {
+      deleteOk = await NativeGalleryHelper.deletePhotos(deleteIds);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Error deleting items: $e');
+      }
+    }
+
+    if (!deleteOk) {
+      _persistDraft();
+      return false;
+    }
+
+    final deletedSet = deleteIds.toSet();
+    _recordSuccessfulGalleryDeletes(deleteQueueSnapshot, deleteIds);
+    _compactAfterSuccessfulDeletes(deletedSet);
+
+    if (state.sessionBatchOrder.isEmpty) {
+      state = state.copyWith(
+        isCommitted: true,
+        decisions: const [],
+      );
+      _persistDraft();
+      ref.read(impactStatsProvider.notifier).recordCommitCompleted();
+      return true;
+    }
+
+    _persistDraft();
+    return true;
+  }
+
   /// Persists keeps, then deletes (if any). Returns `true` when fully done.
   /// On delete failure, keeps stay saved; [keepsPersistedToLibrary] is true;
   /// [isCommitted] stays false so the user can call again to retry deletes.
   Future<bool> commitSession() async {
     if (state.isCommitted) return true;
 
-    final keepIds = <String>[];
     final deleteIds = <String>[];
     for (final d in state.decisions) {
       if (d.isDelete) {
         deleteIds.add(d.id);
-      } else {
-        keepIds.add(d.id);
       }
     }
 
-    if (!state.keepsPersistedToLibrary) {
-      if (keepIds.isNotEmpty) {
-        ref.read(reviewedIdsProvider.notifier).addIds(keepIds);
-      }
-      state = state.copyWith(keepsPersistedToLibrary: true);
-      _persistDraft();
-    }
+    _persistKeepsIfNeeded();
 
     if (deleteIds.isEmpty) {
       state = state.copyWith(isCommitted: true);
@@ -425,14 +552,7 @@ class SwipeSessionNotifier extends Notifier<SwipeSessionState> {
     }
 
     if (deleteOk) {
-      final photoCount =
-          deleteQueueSnapshot.where((e) => !e.isVideo).length;
-      final videoCount = deleteQueueSnapshot.where((e) => e.isVideo).length;
-      ref
-          .read(impactStatsProvider.notifier)
-          .recordSuccessfulDeletes(photos: photoCount, videos: videoCount);
-      ref.read(reviewedIdsProvider.notifier).addIds(deleteIds);
-      ref.invalidate(allMediaProvider);
+      _recordSuccessfulGalleryDeletes(deleteQueueSnapshot, deleteIds);
       state = state.copyWith(isCommitted: true);
       _persistDraft();
       ref.read(impactStatsProvider.notifier).recordCommitCompleted();

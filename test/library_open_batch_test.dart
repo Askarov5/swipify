@@ -1,8 +1,11 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:swipify/core/library_thumbnail_cache.dart';
+import 'package:swipify/core/providers/photo_provider.dart';
 import 'package:swipify/core/providers/preferences_provider.dart';
 import 'package:swipify/core/theme.dart';
 import 'package:swipify/features/library/library_review_screen.dart';
@@ -64,5 +67,61 @@ void main() {
 
     expect(find.byType(SwipeScreen), findsOneWidget);
     expect(find.text('May 2024'), findsWidgets);
+  });
+
+  testWidgets('Library shows Continue when swipe draft exists for batch',
+      (tester) async {
+    await tester.binding.setSurfaceSize(const Size(800, 1400));
+    addTearDown(() async {
+      await tester.binding.setSurfaceSize(null);
+    });
+
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+
+    final creation = DateTime.utc(2024, 5, 12);
+    const assetId = 'lib-draft-1';
+
+    prefs.setString(
+      swipeSessionDraftPrefsKey('May 2024'),
+      jsonEncode({
+        'o': [assetId],
+        'dec': <Map<String, dynamic>>[],
+        'kp': false,
+      }),
+    );
+
+    final mock = GalleryChannelMock(
+      requestPermissionResponse: 'authorized',
+      fetchLibraryMetadataResponse: [
+        {
+          'id': assetId,
+          'creationTime': creation.millisecondsSinceEpoch,
+          'isVideo': false,
+        },
+      ],
+      thumbnailBytes: kTestPng1x1,
+      fileBytes: kTestPng1x1,
+    )..register();
+    addTearDown(mock.unregister);
+    addTearDown(LibraryThumbnailCache.clear);
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+        ],
+        child: MaterialApp(
+          theme: SwipifyTheme.darkTheme,
+          home: const LibraryReviewScreen(),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pumpAndSettle();
+
+    expect(find.text('Continue'), findsOneWidget);
+    expect(find.text('In progress'), findsOneWidget);
   });
 }
