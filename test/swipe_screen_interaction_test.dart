@@ -243,15 +243,17 @@ void main() {
       await tester.pump();
       await tester.pumpAndSettle();
 
-      final appCtx = tester.element(find.byType(MaterialApp));
-      final container = ProviderScope.containerOf(appCtx);
-
       await tester.tap(find.text('Clean').first);
       await tester.pumpAndSettle();
 
+      final swipeCtx = tester.element(find.byType(SwipeScreen));
+      final container = ProviderScope.containerOf(swipeCtx);
+      final frontId =
+          container.read(swipeSessionNotifierProvider).remainingAssets.last.id;
+
       await tester.tap(find.byIcon(Icons.skip_next));
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pump(const Duration(milliseconds: 400));
       await tester.pumpAndSettle();
 
       await tester.tap(find.byIcon(Icons.close));
@@ -262,7 +264,7 @@ void main() {
 
       expect(find.byType(SwipeScreen), findsNothing);
       expect(find.text('Swipify Photos & Videos'), findsOneWidget);
-      expect(container.read(reviewedIdsProvider), contains('s2'));
+      expect(container.read(reviewedIdsProvider), contains(frontId));
     });
 
     testWidgets('Navigator.maybePop blocked opens leave dialog', (tester) async {
@@ -270,12 +272,16 @@ void main() {
 
       await tester.tap(find.byIcon(Icons.skip_next));
       await tester.pump();
-      await tester.pump(const Duration(milliseconds: 350));
+      await tester.pump(const Duration(milliseconds: 400));
       await tester.pumpAndSettle();
 
       final swipeCtx = tester.element(find.byType(SwipeScreen));
-      final popped = await Navigator.of(swipeCtx).maybePop();
-      expect(popped, isFalse);
+      final c = ProviderScope.containerOf(swipeCtx);
+      expect(c.read(swipeSessionNotifierProvider).decisions, isNotEmpty);
+
+      // Navigator.maybePop returns true when the route vetoes pop (doNotPop);
+      // success is shown by the dialog, not the Future result.
+      await Navigator.of(swipeCtx).maybePop();
       await tester.pumpAndSettle();
 
       expect(find.text('Leave this batch?'), findsOneWidget);
