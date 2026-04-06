@@ -7,10 +7,6 @@ import 'package:swipify/core/native_gallery_helper.dart';
 import 'package:swipify/core/providers/photo_provider.dart';
 import 'package:swipify/core/providers/preferences_provider.dart';
 
-/// Same key shape as [SwipeSessionNotifier] private `_draftPrefsKey`.
-String draftPrefsKey(String batchId) =>
-    'swipify_swipe_draft_${batchId.hashCode}';
-
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -56,7 +52,7 @@ void main() {
       final library = [p1, p2];
 
       prefs.setString(
-        draftPrefsKey(batchId),
+        swipeSessionDraftPrefsKey(batchId),
         jsonEncode({
           'o': ['a', 'b'],
           'dec': [
@@ -80,7 +76,7 @@ void main() {
 
     test('invalid JSON removes draft and leaves init state', () {
       final batchId = 'Jun 2024';
-      prefs.setString(draftPrefsKey(batchId), '{');
+      prefs.setString(swipeSessionDraftPrefsKey(batchId), '{');
 
       final p = SwipifyPhoto(
         id: 'a',
@@ -101,7 +97,7 @@ void main() {
       notifier.init([p], batchId);
       notifier.tryRestoreDraft(batch, [p]);
 
-      expect(prefs.getString(draftPrefsKey(batchId)), isNull);
+      expect(prefs.getString(swipeSessionDraftPrefsKey(batchId)), isNull);
       expect(
         container.read(swipeSessionNotifierProvider).decisions,
         isEmpty,
@@ -111,7 +107,7 @@ void main() {
     test('order id not in batch.allAssetIds removes draft', () {
       final batchId = 'Jul 2024';
       prefs.setString(
-        draftPrefsKey(batchId),
+        swipeSessionDraftPrefsKey(batchId),
         jsonEncode({
           'o': ['a', 'ghost'],
           'dec': <Map<String, dynamic>>[],
@@ -138,13 +134,13 @@ void main() {
       notifier.init([p], batchId);
       notifier.tryRestoreDraft(batch, [p]);
 
-      expect(prefs.getString(draftPrefsKey(batchId)), isNull);
+      expect(prefs.getString(swipeSessionDraftPrefsKey(batchId)), isNull);
     });
 
     test('wrong decision sequence vs stack order removes draft', () {
       final batchId = 'Aug 2024';
       prefs.setString(
-        draftPrefsKey(batchId),
+        swipeSessionDraftPrefsKey(batchId),
         jsonEncode({
           'o': ['a', 'b'],
           'dec': [
@@ -178,7 +174,7 @@ void main() {
       notifier.init([p1, p2], batchId);
       notifier.tryRestoreDraft(batch, [p1, p2]);
 
-      expect(prefs.getString(draftPrefsKey(batchId)), isNull);
+      expect(prefs.getString(swipeSessionDraftPrefsKey(batchId)), isNull);
     });
   });
 }

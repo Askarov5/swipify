@@ -22,8 +22,29 @@ class LibraryReviewScreen extends ConsumerStatefulWidget {
       _LibraryReviewScreenState();
 }
 
-class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen> {
+class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
+    with WidgetsBindingObserver {
   _MainNavTab _selectedTab = _MainNavTab.photos;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+    if (state == AppLifecycleState.resumed) {
+      ref.read(photoPermissionProvider.notifier).syncFromSystem();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -69,7 +90,7 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen> {
     return ref.watch(photoPermissionProvider).when(
           data: (permission) {
             if (!NativeGalleryHelper.isGranted(permission)) {
-              return _buildPermissionRequired(context);
+              return _buildPermissionRequired(context, ref, permission);
             }
             return _buildLibraryContent(context, ref);
           },
@@ -79,7 +100,10 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen> {
         );
   }
 
-  Widget _buildPermissionRequired(BuildContext context) {
+  Widget _buildPermissionRequired(
+      BuildContext context, WidgetRef ref, String permission) {
+    final needsSettings = NativeGalleryHelper.isDenied(permission) ||
+        permission == 'restricted';
     return Center(
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 32.0),
@@ -106,7 +130,9 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen> {
             ),
             const SizedBox(height: 16),
             Text(
-              'Swipify is completely private and runs 100% on your device. We need access to your photo library to help you declutter.\n\nWithout access, this app cannot function.',
+              needsSettings
+                  ? 'Photo access was denied or restricted. Enable full access to your library in Settings, then tap Check access below.'
+                  : 'Swipify is completely private and runs on your device. Allow access to your photo library so you can review and declutter.\n\nWithout access, this screen stays empty.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
                     color: SwipifyTheme.onSurfaceVariant,
@@ -125,14 +151,29 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen> {
                   ),
                   elevation: 8,
                 ),
-                onPressed: () => NativeGalleryHelper.openSettings(),
-                icon: const Icon(Icons.settings),
-                label: const Text(
-                  'Open Settings',
-                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                onPressed: () => ref
+                    .read(photoPermissionProvider.notifier)
+                    .requestFullAccess(),
+                icon: Icon(needsSettings ? Icons.settings : Icons.photo_library),
+                label: Text(
+                  needsSettings ? 'Open Settings' : 'Allow access to photos',
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 16),
                 ),
               ),
             ),
+            if (needsSettings) ...[
+              const SizedBox(height: 12),
+              TextButton(
+                onPressed: () => ref
+                    .read(photoPermissionProvider.notifier)
+                    .syncFromSystem(),
+                child: const Text(
+                  'Check access',
+                  style: TextStyle(fontWeight: FontWeight.w600),
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -145,70 +186,133 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen> {
   }
 
   Widget _buildLibraryContent(BuildContext context, WidgetRef ref) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Review Library',
-                    style: Theme.of(context)
-                        .textTheme
-                        .headlineMedium
-                        ?.copyWith(fontSize: 28),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Select a batch to begin your curation session.',
-                    style: Theme.of(context)
-                        .textTheme
-                        .labelSmall
-                        ?.copyWith(fontSize: 12),
-                  ),
-                ],
-              ),
-              _buildSegmentedControl(context, ref),
-            ],
-          ),
-          const SizedBox(height: 24),
+    return RefreshIndicator(
+      onRefresh: () async {
+        await ref.read(photoPermissionProvider.notifier).syncFromSystem();
+        ref.invalidate(allMediaProvider);
+      },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 24.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Review Library',
+                      style: Theme.of(context)
+                          .textTheme
+                          .headlineMedium
+                          ?.copyWith(fontSize: 28),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Select a batch to begin your curation session.',
+                      style: Theme.of(context)
+                          .textTheme
+                          .labelSmall
+                          ?.copyWith(fontSize: 12),
+                    ),
+                  ],
+                ),
+                _buildSegmentedControl(context, ref),
+              ],
+            ),
+            const SizedBox(height: 24),
 
-          // Filter Tabs
-          _buildFilterTabs(context, ref),
-          const SizedBox(height: 24),
+            // Filter Tabs
+            _buildFilterTabs(context, ref),
+            const SizedBox(height: 24),
 
-          // List Items
-          ref.watch(batchedMediaProvider).when(
-                data: (batches) {
-                  if (batches.isEmpty) {
-                    return const Center(
-                        child: Padding(
-                      padding: EdgeInsets.only(top: 48.0),
-                      child: Text("No photos found or all are reviewed."),
-                    ));
-                  }
-                  return Column(
-                    children: batches
-                        .map((batch) => _buildBatchCard(context, ref, batch))
-                        .toList(),
-                  );
-                },
-                loading: () => const Center(
-                    child: Padding(
-                  padding: EdgeInsets.only(top: 48.0),
-                  child: CircularProgressIndicator(),
-                )),
-                error: (e, st) =>
-                    Center(child: Text('Error loading batches: $e')),
+            // List Items
+            ref.watch(batchedMediaProvider).when(
+                  data: (batches) {
+                    if (batches.isEmpty) {
+                      final filter = ref.watch(mediaFilterProvider);
+                      return _buildLibraryEmptyState(context, filter);
+                    }
+                    return Column(
+                      children: batches
+                          .map((batch) => _buildBatchCard(context, ref, batch))
+                          .toList(),
+                    );
+                  },
+                  loading: () => const Center(
+                      child: Padding(
+                    padding: EdgeInsets.only(top: 48.0),
+                    child: CircularProgressIndicator(),
+                  )),
+                  error: (e, st) =>
+                      Center(child: Text('Error loading batches: $e')),
+                ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLibraryEmptyState(
+      BuildContext context, MediaTypeFilter filter) {
+    final (IconData icon, String title, String body) = switch (filter) {
+      MediaTypeFilter.all => (
+          Icons.photo_library_outlined,
+          'No photos or videos',
+          'Your library has no images or videos we can show, or we could not load them. Pull down to refresh.',
+        ),
+      MediaTypeFilter.photos => (
+          Icons.image_not_supported_outlined,
+          'No photos for this filter',
+          'There are no photos in your library. Try the All or Videos tab, or pull down to refresh.',
+        ),
+      MediaTypeFilter.videos => (
+          Icons.videocam_off_outlined,
+          'No videos for this filter',
+          'There are no videos in your library. Try the All or Photos tab, or pull down to refresh.',
+        ),
+    };
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.only(top: 48.0),
+        child: Column(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: const BoxDecoration(
+                color: SwipifyTheme.surfaceContainerHigh,
+                shape: BoxShape.circle,
               ),
-        ],
+              child: Icon(icon, size: 48, color: SwipifyTheme.primary),
+            ),
+            const SizedBox(height: 24),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                    color: SwipifyTheme.onSurface,
+                  ),
+            ),
+            const SizedBox(height: 12),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: Text(
+                body,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                      color: SwipifyTheme.onSurfaceVariant,
+                    ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -323,7 +427,12 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen> {
 
   Widget _buildBatchCard(
       BuildContext context, WidgetRef ref, PhotoBatch batch) {
+    final prefs = ref.watch(sharedPreferencesProvider);
+    final draftRaw = prefs.getString(swipeSessionDraftPrefsKey(batch.id));
+    final hasSwipeDraft = draftRaw != null && draftRaw.isNotEmpty;
+
     final actionable = !batch.isFullyReviewed;
+    final showContinue = actionable && hasSwipeDraft;
     final title = batch.title;
     final subtitle = '${batch.reviewedCount} / ${batch.totalCount} Reviewed';
     final progress =
@@ -378,6 +487,17 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen> {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
+                    if (showContinue) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'In progress',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: SwipifyTheme.primary,
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 2),
                     Row(
                       children: [
@@ -425,10 +545,15 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen> {
                       onPressed: () {
                         SwipeScreen.open(context, batch);
                       },
-                      icon: const Text('Clean',
-                          style: TextStyle(
-                              fontSize: 12, fontWeight: FontWeight.bold)),
-                      label: const Icon(Icons.auto_awesome, size: 16),
+                      icon: Text(
+                        showContinue ? 'Continue' : 'Clean',
+                        style: const TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.bold),
+                      ),
+                      label: Icon(
+                        showContinue ? Icons.play_arrow : Icons.auto_awesome,
+                        size: 16,
+                      ),
                     )
                   : ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(

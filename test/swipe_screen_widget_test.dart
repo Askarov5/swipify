@@ -69,9 +69,79 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('May 2024'), findsOneWidget);
-    expect(find.byIcon(Icons.delete), findsOneWidget);
+    expect(find.byTooltip('Mark for delete'), findsOneWidget);
+    expect(
+      find.byTooltip(
+        'Remove delete list from library and leave. You can resume this batch later.',
+      ),
+      findsOneWidget,
+    );
     expect(find.byIcon(Icons.skip_next), findsOneWidget);
     expect(find.text('DELETE'), findsOneWidget);
     expect(find.text('KEEP'), findsOneWidget);
+  });
+
+  testWidgets(
+      'SwipeScreen shows deck before slow allMediaProvider completes',
+      (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+
+    final creation = DateTime.utc(2024, 5, 10);
+    const assetId = 'swipe-screen-asset';
+
+    final mock = GalleryChannelMock(
+      requestPermissionResponse: 'authorized',
+      fetchLibraryMetadataResponse: [
+        {
+          'id': assetId,
+          'creationTime': creation.millisecondsSinceEpoch,
+          'isVideo': false,
+        },
+      ],
+      fileBytes: kTestPng1x1,
+      thumbnailBytes: kTestPng1x1,
+    )..register();
+    addTearDown(mock.unregister);
+
+    final photo = SwipifyPhoto(
+      id: assetId,
+      creationTime: creation,
+      isVideo: false,
+    );
+
+    final batch = PhotoBatch(
+      id: 'May 2024',
+      title: 'May 2024',
+      assets: [photo],
+      allAssetIds: [assetId],
+      totalCount: 1,
+      reviewedCount: 0,
+      isFullyReviewed: false,
+    );
+
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+          allMediaProvider.overrideWith((ref) async {
+            await Future<void>.delayed(const Duration(milliseconds: 50));
+            return [photo];
+          }),
+        ],
+        child: MaterialApp(
+          theme: SwipifyTheme.darkTheme,
+          home: SwipeScreen(batch: batch),
+        ),
+      ),
+    );
+
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.byIcon(Icons.skip_next), findsOneWidget);
+
+    await tester.pump(const Duration(milliseconds: 60));
   });
 }

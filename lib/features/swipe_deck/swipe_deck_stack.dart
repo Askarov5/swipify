@@ -53,6 +53,8 @@ class SwipeDeckStack extends StatelessWidget {
         final index = entry.key;
         final asset = entry.value;
         final isFrontCard = index == cards.length - 1;
+        final warmDeckMedia =
+            cards.length >= 2 && index == cards.length - 2;
         final swipeKeepTint = !isFrontCard
             ? false
             : (motion == SwipeDeckMotion.flyingOff
@@ -85,6 +87,7 @@ class SwipeDeckStack extends StatelessWidget {
                     key: ValueKey(asset.id),
                     asset: asset,
                     isFrontCard: isFrontCard,
+                    warmDeckMedia: warmDeckMedia,
                   ),
                   Align(
                     alignment: Alignment.bottomCenter,

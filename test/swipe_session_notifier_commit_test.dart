@@ -146,4 +146,184 @@ void main() {
       expect(reviewed, containsAll(['k', 'd']));
     });
   });
+
+  group('SwipeSessionNotifier.applyPendingDeletesSaveAndCompact', () {
+    late SharedPreferences prefs;
+
+    setUp(() async {
+      SharedPreferences.setMockInitialValues({});
+      prefs = await SharedPreferences.getInstance();
+    });
+
+    test('returns false when delete queue is empty', () async {
+      final mock = GalleryChannelMock()..register();
+      addTearDown(mock.unregister);
+
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final p = SwipifyPhoto(
+        id: 'a',
+        creationTime: DateTime.utc(2024, 5, 1),
+        isVideo: false,
+      );
+      final notifier = container.read(swipeSessionNotifierProvider.notifier);
+      notifier.init([p], 'May 2024');
+      notifier.recordDecision(p, delete: false);
+
+      expect(await notifier.applyPendingDeletesSaveAndCompact(), false);
+      expect(container.read(swipeSessionNotifierProvider).isCommitted, false);
+    });
+
+    test('compacts order and leaves session resumable when items remain',
+        () async {
+      final mock = GalleryChannelMock(deletePhotosResponse: true)..register();
+      addTearDown(mock.unregister);
+
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final p1 = SwipifyPhoto(
+        id: 'p1',
+        creationTime: DateTime.utc(2024, 5, 1),
+        isVideo: false,
+      );
+      final p2 = SwipifyPhoto(
+        id: 'p2',
+        creationTime: DateTime.utc(2024, 5, 2),
+        isVideo: false,
+      );
+      final p3 = SwipifyPhoto(
+        id: 'p3',
+        creationTime: DateTime.utc(2024, 5, 3),
+        isVideo: false,
+      );
+      final notifier = container.read(swipeSessionNotifierProvider.notifier);
+      notifier.init([p1, p2, p3], 'May 2024');
+      notifier.recordDecision(p3, delete: true);
+
+      expect(await notifier.applyPendingDeletesSaveAndCompact(), true);
+
+      final state = container.read(swipeSessionNotifierProvider);
+      expect(state.isCommitted, false);
+      expect(state.sessionBatchOrder.map((e) => e.id), ['p1', 'p2']);
+      expect(state.decisions, isEmpty);
+      expect(container.read(reviewedIdsProvider), contains('p3'));
+      expect(
+        container.read(impactStatsProvider).commitsCompletedTotal,
+        0,
+      );
+    });
+
+    test('finalizes when all assets are removed by delete', () async {
+      final mock = GalleryChannelMock(deletePhotosResponse: true)..register();
+      addTearDown(mock.unregister);
+
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final p = SwipifyPhoto(
+        id: 'gone',
+        creationTime: DateTime.utc(2024, 5, 1),
+        isVideo: false,
+      );
+      final notifier = container.read(swipeSessionNotifierProvider.notifier);
+      notifier.init([p], 'May 2024');
+      notifier.recordDecision(p, delete: true);
+
+      expect(await notifier.applyPendingDeletesSaveAndCompact(), true);
+
+      final state = container.read(swipeSessionNotifierProvider);
+      expect(state.isCommitted, true);
+      expect(state.sessionBatchOrder, isEmpty);
+      expect(
+        container.read(impactStatsProvider).commitsCompletedTotal,
+        1,
+      );
+    });
+
+    test('delete failure returns false without compacting', () async {
+      final mock = GalleryChannelMock(deletePhotosResponse: false)..register();
+      addTearDown(mock.unregister);
+
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final p1 = SwipifyPhoto(
+        id: 'a',
+        creationTime: DateTime.utc(2024, 5, 1),
+        isVideo: false,
+      );
+      final p2 = SwipifyPhoto(
+        id: 'b',
+        creationTime: DateTime.utc(2024, 5, 2),
+        isVideo: false,
+      );
+      final notifier = container.read(swipeSessionNotifierProvider.notifier);
+      notifier.init([p1, p2], 'May 2024');
+      notifier.recordDecision(p2, delete: true);
+
+      expect(await notifier.applyPendingDeletesSaveAndCompact(), false);
+
+      final state = container.read(swipeSessionNotifierProvider);
+      expect(state.sessionBatchOrder.length, 2);
+      expect(state.deleteCount, 1);
+      expect(state.isCommitted, false);
+    });
+  });
+
+  group('SwipeSessionNotifier.saveKeepsAndPersistDraft', () {
+    late SharedPreferences prefs;
+
+    setUp(() async {
+      SharedPreferences.setMockInitialValues({});
+      prefs = await SharedPreferences.getInstance();
+    });
+
+    test('persists keeps without committing session', () async {
+      final mock = GalleryChannelMock()..register();
+      addTearDown(mock.unregister);
+
+      final container = ProviderContainer(
+        overrides: [
+          sharedPreferencesProvider.overrideWithValue(prefs),
+        ],
+      );
+      addTearDown(container.dispose);
+
+      final p = SwipifyPhoto(
+        id: 'k',
+        creationTime: DateTime.utc(2024, 5, 1),
+        isVideo: false,
+      );
+      final notifier = container.read(swipeSessionNotifierProvider.notifier);
+      notifier.init([p], 'May 2024');
+      notifier.recordDecision(p, delete: false);
+
+      expect(await notifier.saveKeepsAndPersistDraft(), true);
+
+      expect(container.read(reviewedIdsProvider), contains('k'));
+      expect(container.read(swipeSessionNotifierProvider).isCommitted, false);
+      expect(
+        container.read(impactStatsProvider).commitsCompletedTotal,
+        0,
+      );
+    });
+  });
 }

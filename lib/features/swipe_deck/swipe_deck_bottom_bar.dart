@@ -4,20 +4,56 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme.dart';
 
+/// Trash + check: apply pending deletes and leave (see [SwipeDeckBottomBar.onApplyDeletes]).
+class _TrashCheckIcon extends StatelessWidget {
+  const _TrashCheckIcon();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      width: 32,
+      height: 32,
+      child: Stack(
+        alignment: Alignment.center,
+        clipBehavior: Clip.none,
+        children: [
+          Icon(
+            Icons.delete_outline,
+            color: SwipifyTheme.onSurfaceVariant,
+            size: 32,
+          ),
+          Positioned(
+            right: -2,
+            bottom: -2,
+            child: Icon(
+              Icons.check_circle,
+              color: SwipifyTheme.primary,
+              size: 16,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class SwipeDeckBottomBar extends StatelessWidget {
   final bool deckBusy;
-  final bool canUndo;
+  final bool canApplyDeletes;
+  /// Shown as small "Delete(n)" under the apply icon when > 0.
+  final int pendingDeleteCount;
   final VoidCallback? onDelete;
   final VoidCallback? onKeep;
-  final VoidCallback? onUndo;
+  final VoidCallback? onApplyDeletes;
 
   const SwipeDeckBottomBar({
     super.key,
     required this.deckBusy,
-    required this.canUndo,
+    required this.canApplyDeletes,
+    required this.pendingDeleteCount,
     required this.onDelete,
     required this.onKeep,
-    required this.onUndo,
+    required this.onApplyDeletes,
   });
 
   @override
@@ -38,8 +74,9 @@ class SwipeDeckBottomBar extends StatelessWidget {
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     IconButton(
+                      tooltip: 'Mark for delete',
                       onPressed: deckBusy ? null : onDelete,
-                      icon: const Icon(Icons.delete,
+                      icon: const Icon(Icons.close,
                           color: SwipifyTheme.secondary, size: 32),
                       style: IconButton.styleFrom(
                         backgroundColor: SwipifyTheme.secondaryContainer
@@ -48,12 +85,29 @@ class SwipeDeckBottomBar extends StatelessWidget {
                       ),
                     ),
                     IconButton(
-                      tooltip: 'Undo last swipe',
-                      onPressed: (!deckBusy && canUndo) ? onUndo : null,
-                      icon: const Icon(
-                        Icons.settings_backup_restore,
-                        color: SwipifyTheme.onSurfaceVariant,
-                        size: 32,
+                      tooltip:
+                          'Remove delete list from library and leave. You can resume this batch later.',
+                      onPressed: (!deckBusy && canApplyDeletes)
+                          ? onApplyDeletes
+                          : null,
+                      icon: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const _TrashCheckIcon(),
+                          if (pendingDeleteCount > 0) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              'Delete($pendingDeleteCount)',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .labelSmall
+                                  ?.copyWith(
+                                    color: SwipifyTheme.onSurfaceVariant,
+                                    fontSize: 11,
+                                  ),
+                            ),
+                          ],
+                        ],
                       ),
                       style: IconButton.styleFrom(
                         backgroundColor: SwipifyTheme.surfaceContainerHighest

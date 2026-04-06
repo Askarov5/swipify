@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:ui' show lerpDouble;
 
 import 'package:flutter/material.dart';
@@ -58,18 +59,14 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) return;
+      final notifier = ref.read(swipeSessionNotifierProvider.notifier);
+      notifier.init(widget.batch.assets, widget.batch.id);
       try {
         final library = await ref.read(allMediaProvider.future);
         if (!mounted) return;
-        final notifier = ref.read(swipeSessionNotifierProvider.notifier);
-        notifier.init(widget.batch.assets, widget.batch.id);
         notifier.tryRestoreDraft(widget.batch, library);
       } catch (_) {
-        if (!mounted) return;
-        ref.read(swipeSessionNotifierProvider.notifier).init(
-              widget.batch.assets,
-              widget.batch.id,
-            );
+        // [init] already applied; deck is usable without draft restore.
       }
     });
     _deckController = AnimationController(vsync: this)
@@ -245,6 +242,36 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
     showSwipeLeaveBatchDialog(context, ref);
   }
 
+  Future<void> _onApplyDeletesPressed() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final removedCount = ref.read(swipeSessionNotifierProvider).deleteCount;
+    final notifier = ref.read(swipeSessionNotifierProvider.notifier);
+    final ok = await notifier.applyPendingDeletesSaveAndCompact();
+    if (!mounted) return;
+    if (ok) {
+      if (removedCount > 0) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text(
+              removedCount == 1
+                  ? 'Removed 1 item from your library. Progress saved.'
+                  : 'Removed $removedCount items from your library. Progress saved.',
+            ),
+          ),
+        );
+      }
+      Navigator.pop(context);
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Keeps were saved, but delete failed. Try again.',
+          ),
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final initialAssets = widget.batch.assets;
@@ -276,16 +303,19 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
           ),
           centerTitle: true,
           actions: [
-            if (canUndo)
+            if (!sessionState.isCommitted)
               IconButton(
-                tooltip: 'Undo last swipe',
-                icon: const Icon(Icons.undo,
+                tooltip:
+                    canUndo ? 'Undo last swipe' : 'Nothing to undo yet',
+                icon: const Icon(Icons.settings_backup_restore,
                     color: SwipifyTheme.onSurfaceVariant),
-                onPressed: () {
-                  ref
-                      .read(swipeSessionNotifierProvider.notifier)
-                      .undoLastDecision();
-                },
+                onPressed: canUndo
+                    ? () {
+                        ref
+                            .read(swipeSessionNotifierProvider.notifier)
+                            .undoLastDecision();
+                      }
+                    : null,
               ),
           ],
         ),
@@ -341,8 +371,9 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
                     SwipeDeckProgressOverlay(progress: progress),
                     SwipeDeckBottomBar(
                       deckBusy: deckBusy,
-                      canUndo: sessionState.decisions.isNotEmpty &&
+                      canApplyDeletes: sessionState.deleteCount > 0 &&
                           !sessionState.isCommitted,
+                      pendingDeleteCount: sessionState.deleteCount,
                       onDelete: () => _startFlyOff(
                             context: context,
                             session: sessionNotifier,
@@ -355,11 +386,8 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
                             card: cards.last,
                             keep: true,
                           ),
-                      onUndo: () {
-                        ref
-                            .read(swipeSessionNotifierProvider.notifier)
-                            .undoLastDecision();
-                      },
+                      onApplyDeletes: () =>
+                          unawaited(_onApplyDeletesPressed()),
                     ),
                   ],
                 );

@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -32,6 +30,9 @@ class GalleryChannelMock {
   Uint8List? fileBytes;
   String? filePath;
 
+  /// Test hook: incremented on each `fetchFilePath` channel call.
+  int fetchFilePathCallCount = 0;
+
   static const MethodChannel _channel = MethodChannel('com.swipify/gallery');
 
   void register() {
@@ -61,6 +62,7 @@ class GalleryChannelMock {
       case 'fetchFile':
         return fileBytes;
       case 'fetchFilePath':
+        fetchFilePathCallCount++;
         return filePath;
       default:
         return null;

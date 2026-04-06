@@ -10,10 +10,15 @@ class SwipifyMediaWidget extends StatefulWidget {
   final SwipifyPhoto asset;
   final bool isFrontCard;
 
+  /// When true, this is the card directly under the front; preload full media
+  /// so promotion to front is instant (especially video decode).
+  final bool warmDeckMedia;
+
   const SwipifyMediaWidget({
     super.key,
     required this.asset,
     required this.isFrontCard,
+    this.warmDeckMedia = false,
   });
 
   @override
@@ -38,7 +43,7 @@ class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
   Future<Uint8List?>? _videoPosterFuture;
 
   Future<Uint8List?> _photoLoadFuture() {
-    if (widget.isFrontCard) {
+    if (widget.isFrontCard || widget.warmDeckMedia) {
       return widget.asset.fileData;
     }
     return NativeGalleryHelper.fetchThumbnail(
@@ -57,7 +62,7 @@ class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
         width: _deckThumbExtent,
         height: _deckThumbExtent,
       );
-      if (widget.isFrontCard) {
+      if (widget.isFrontCard || widget.warmDeckMedia) {
         _initVideo();
       }
     } else {
@@ -120,7 +125,7 @@ class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
   static const Duration _videoInitRetryDelay = Duration(milliseconds: 90);
 
   Future<void> _initVideo({bool forceNativeRefresh = false}) async {
-    if (!mounted || !widget.isFrontCard) return;
+    if (!mounted) return;
 
     /// Swipes schedule overlapping async work; only the latest [loadId] may update state.
     final String loadId = widget.asset.id;
@@ -185,13 +190,27 @@ class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
           }
           return;
         }
-        await controller.setVolume(0.0);
         await controller.setLooping(true);
-        setState(() {
-          _initialized = true;
-          _videoError = null;
-        });
-        controller.play();
+        if (widget.isFrontCard) {
+          await controller.setVolume(_isMuted ? 0.0 : 1.0);
+          setState(() {
+            _initialized = true;
+            _videoError = null;
+          });
+          await controller.play();
+          if (mounted && widget.asset.id == loadId) {
+            setState(() => _videoIsPlaying = true);
+          }
+        } else {
+          await controller.setVolume(0.0);
+          await controller.pause();
+          await controller.seekTo(Duration.zero);
+          setState(() {
+            _initialized = true;
+            _videoError = null;
+            _videoIsPlaying = false;
+          });
+        }
         return;
       } catch (_) {
         controller.removeListener(_onVideoPlayerTick);
@@ -208,6 +227,23 @@ class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
       _initialized = false;
       _videoError = 'Video failed to load.';
     });
+  }
+
+  void _applyFrontPlaybackFromWarm() {
+    final c = _videoController;
+    if (c == null || !mounted) return;
+    if (!c.value.isInitialized) {
+      _initVideo();
+      return;
+    }
+    () async {
+      await c.setLooping(true);
+      await c.setVolume(_isMuted ? 0.0 : 1.0);
+      await c.seekTo(Duration.zero);
+      if (!mounted || !widget.isFrontCard || !widget.asset.isVideo) return;
+      await c.play();
+      if (mounted) setState(() => _videoIsPlaying = true);
+    }();
   }
 
   void _retryVideo() {
@@ -233,7 +269,7 @@ class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
           width: _deckThumbExtent,
           height: _deckThumbExtent,
         );
-        if (widget.isFrontCard) {
+        if (widget.isFrontCard || widget.warmDeckMedia) {
           _initVideo();
         }
       } else {
@@ -249,7 +285,8 @@ class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
     }
 
     if (!widget.asset.isVideo &&
-        widget.isFrontCard != oldWidget.isFrontCard) {
+        (widget.isFrontCard != oldWidget.isFrontCard ||
+            widget.warmDeckMedia != oldWidget.warmDeckMedia)) {
       setState(() {
         _imageFuture = _photoLoadFuture();
       });
@@ -257,13 +294,33 @@ class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
     }
 
     if (widget.asset.isVideo) {
+      if (!widget.warmDeckMedia &&
+          oldWidget.warmDeckMedia &&
+          !widget.isFrontCard) {
+        _disposeVideoController();
+        _videoError = null;
+        _videoIsPlaying = false;
+        setState(() {});
+        return;
+      }
+      if (widget.warmDeckMedia &&
+          !oldWidget.warmDeckMedia &&
+          !widget.isFrontCard &&
+          !_initialized) {
+        _initVideo();
+        return;
+      }
       if (widget.isFrontCard && !oldWidget.isFrontCard) {
-        if (!_initialized) {
-          _initVideo();
+        if (_initialized &&
+            _videoController != null &&
+            _videoError == null) {
+          _applyFrontPlaybackFromWarm();
         } else {
-          _videoController?.play();
+          _initVideo();
         }
-      } else if (!widget.isFrontCard && oldWidget.isFrontCard) {
+        return;
+      }
+      if (!widget.isFrontCard && oldWidget.isFrontCard) {
         _videoController?.removeListener(_onVideoPlayerTick);
         _videoController?.dispose();
         _videoController = null;
@@ -365,7 +422,12 @@ class _SwipifyMediaWidgetState extends State<SwipifyMediaWidget> {
   @override
   Widget build(BuildContext context) {
     if (widget.asset.isVideo) {
-      if (!_initialized || _videoController == null) {
+      final showFullVideo = widget.isFrontCard &&
+          _initialized &&
+          _videoController != null &&
+          _videoError == null;
+
+      if (!showFullVideo) {
         return Stack(
           fit: StackFit.expand,
           children: [
