@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../core/theme.dart';
-
 class SwipeDeckProgressOverlay extends StatelessWidget {
   final double progress;
 
@@ -12,6 +10,7 @@ class SwipeDeckProgressOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
     return SafeArea(
       child: Align(
         alignment: Alignment.topCenter,
@@ -26,9 +25,10 @@ class SwipeDeckProgressOverlay extends StatelessWidget {
                 child: LinearProgressIndicator(
                   value: progress,
                   minHeight: 8,
-                  backgroundColor: Colors.white.withValues(alpha: 0.3),
+                  backgroundColor:
+                      scheme.surfaceContainerHighest.withValues(alpha: 0.6),
                   valueColor:
-                      const AlwaysStoppedAnimation<Color>(SwipifyTheme.primary),
+                      AlwaysStoppedAnimation<Color>(scheme.primary),
                 ),
               ),
             ),
@@ -40,16 +40,16 @@ class SwipeDeckProgressOverlay extends StatelessWidget {
                 children: [
                   Text('DELETE',
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: SwipifyTheme.secondary,
+                            color: scheme.secondary,
                             shadows: const [
-                              Shadow(color: Colors.black, blurRadius: 4)
+                              Shadow(color: Colors.black54, blurRadius: 4)
                             ],
                             fontWeight: FontWeight.bold)),
                   Text('KEEP',
                       style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                            color: SwipifyTheme.primary,
+                            color: scheme.primary,
                             shadows: const [
-                              Shadow(color: Colors.black, blurRadius: 4)
+                              Shadow(color: Colors.black54, blurRadius: 4)
                             ],
                             fontWeight: FontWeight.bold)),
                 ],

@@ -239,21 +239,49 @@ class SwipifyGalleryService: NSObject, FlutterPlugin {
         guard exportSession.supportedFileTypes.contains(attempt.fileType) else {
           continue
         }
-        exportSession.outputURL = outURL
-        exportSession.outputFileType = attempt.fileType
         exportSession.shouldOptimizeForNetworkUse = false
 
-        let sem = DispatchSemaphore(value: 0)
-        exportSession.exportAsynchronously {
-          sem.signal()
+        if #available(iOS 18.0, *) {
+          let sem = DispatchSemaphore(value: 0)
+          var exportedPath: String?
+          var failureDescription: String?
+          let session = exportSession
+          let destination = outURL
+          let outType = attempt.fileType
+          Task {
+            defer { sem.signal() }
+            if FileManager.default.fileExists(atPath: destination.path) {
+              try? FileManager.default.removeItem(at: destination)
+            }
+            do {
+              try await session.export(to: destination, as: outType)
+              exportedPath = destination.path
+            } catch {
+              failureDescription = error.localizedDescription
+            }
+          }
+          sem.wait()
+          if let path = exportedPath {
+            completion(path)
+            return
+          }
+          let errDesc = failureDescription ?? "nil"
+          NSLog("[SwipifyGallery] export failed preset=%@ ext=%@ err=%@", attempt.preset, attempt.ext, errDesc)
+        } else {
+          exportSession.outputURL = outURL
+          exportSession.outputFileType = attempt.fileType
+          let sem = DispatchSemaphore(value: 0)
+          exportSession.exportAsynchronously {
+            sem.signal()
+          }
+          sem.wait()
+          if exportSession.status == .completed {
+            completion(outURL.path)
+            return
+          }
+          let errDesc = exportSession.error?.localizedDescription ?? "nil"
+          NSLog("[SwipifyGallery] export failed preset=%@ ext=%@ status=%ld err=%@", attempt.preset, attempt.ext, exportSession.status.rawValue, errDesc)
         }
-        sem.wait()
-        if exportSession.status == .completed {
-          completion(outURL.path)
-          return
-        }
-        let errDesc = exportSession.error?.localizedDescription ?? "nil"
-        NSLog("[SwipifyGallery] export failed preset=%@ ext=%@ status=%ld err=%@", attempt.preset, attempt.ext, exportSession.status.rawValue, errDesc)
       }
 
       if let path = self.copyVideoResourceToTempSync(phAsset: phAsset, assetId: assetId) {

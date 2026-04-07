@@ -1,6 +1,5 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import '../../core/theme.dart';
 import '../../core/native_gallery_helper.dart';
 import '../library/library_review_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -29,7 +28,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               height: 300,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: SwipifyTheme.primary.withValues(alpha: 0.05),
+                color: Theme.of(context).colorScheme.primary.withValues(alpha: 0.05),
               ),
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 120, sigmaY: 120),
@@ -45,7 +44,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               height: 200,
               decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: const Color(0xFF8AD3D7).withValues(alpha: 0.05),
+                color: Theme.of(context).colorScheme.primaryContainer
+                    .withValues(alpha: 0.2),
               ),
               child: BackdropFilter(
                 filter: ImageFilter.blur(sigmaX: 100, sigmaY: 100),
@@ -64,15 +64,15 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(Icons.security,
-                          color: SwipifyTheme.primary, size: 20),
+                      Icon(Icons.security,
+                          color: Theme.of(context).colorScheme.primary, size: 20),
                       const SizedBox(width: 8),
                       Text(
                         'SWIPIFY',
                         style:
                             Theme.of(context).textTheme.displayLarge?.copyWith(
                                   fontSize: 12,
-                                  color: SwipifyTheme.primary,
+                                  color: Theme.of(context).colorScheme.primary,
                                   letterSpacing: 2.0,
                                 ),
                       ),
@@ -102,13 +102,13 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                                   height: 180,
                                   decoration: BoxDecoration(
                                     borderRadius: BorderRadius.circular(24),
-                                    color: SwipifyTheme.surfaceContainerLow,
+                                    color: Theme.of(context).colorScheme.surfaceContainerLow,
                                   ),
-                                  child: const Center(
+                                  child: Center(
                                     child: Icon(
                                       Icons.photo_library,
                                       size: 48,
-                                      color: SwipifyTheme.primary,
+                                      color: Theme.of(context).colorScheme.primary,
                                     ),
                                   ),
                                 ),
@@ -168,9 +168,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                                       child: ElevatedButton(
                                         style: ElevatedButton.styleFrom(
                                           backgroundColor:
-                                              SwipifyTheme.primary,
+                                              Theme.of(context).colorScheme.primary,
                                           foregroundColor:
-                                              SwipifyTheme.onPrimary,
+                                              Theme.of(context).colorScheme.onPrimary,
                                           padding: const EdgeInsets.symmetric(
                                               vertical: 16),
                                           shape: RoundedRectangleBorder(
@@ -236,7 +236,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
                                       .textTheme
                                       .titleMedium
                                       ?.copyWith(
-                                        color: SwipifyTheme.onPrimary,
+                                        color: Theme.of(context).colorScheme.onPrimary,
                                         fontSize: 16,
                                       ),
                                 ),
@@ -279,15 +279,16 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        backgroundColor: SwipifyTheme.surfaceContainerLow,
+        backgroundColor: Theme.of(context).colorScheme.surfaceContainerLow,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(20),
         ),
-        title: const Row(
+        title: Row(
           children: [
-            Icon(Icons.photo_library, color: SwipifyTheme.primary),
-            SizedBox(width: 12),
-            Text('Photo Access Required'),
+            Icon(Icons.photo_library,
+                color: Theme.of(context).colorScheme.primary),
+            const SizedBox(width: 12),
+            const Text('Photo Access Required'),
           ],
         ),
         content: const Text(
@@ -301,8 +302,8 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           ),
           ElevatedButton(
             style: ElevatedButton.styleFrom(
-              backgroundColor: SwipifyTheme.primary,
-              foregroundColor: SwipifyTheme.onPrimary,
+              backgroundColor: Theme.of(context).colorScheme.primary,
+              foregroundColor: Theme.of(context).colorScheme.onPrimary,
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -322,7 +323,7 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
-        color: SwipifyTheme.surfaceContainerLow,
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(16),
       ),
       child: Row(
@@ -330,10 +331,10 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: SwipifyTheme.primaryContainer.withValues(alpha: 0.3),
+              color: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, color: SwipifyTheme.primary, size: 20),
+            child: Icon(icon, color: Theme.of(context).colorScheme.primary, size: 20),
           ),
           const SizedBox(width: 16),
           Column(
@@ -347,8 +348,9 @@ class _OnboardingScreenState extends ConsumerState<OnboardingScreen> {
               const SizedBox(height: 2),
               Text(
                 subtitle,
-                style: const TextStyle(
-                    color: SwipifyTheme.onSurfaceVariant, fontSize: 12),
+                style: TextStyle(
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
+                    fontSize: 12),
               ),
             ],
           ),

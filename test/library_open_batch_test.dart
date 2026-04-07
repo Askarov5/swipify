@@ -50,7 +50,9 @@ void main() {
           sharedPreferencesProvider.overrideWithValue(prefs),
         ],
         child: MaterialApp(
-          theme: SwipifyTheme.darkTheme,
+          theme: SwipifyTheme.lightTheme,
+          darkTheme: SwipifyTheme.darkTheme,
+          themeMode: ThemeMode.dark,
           home: const LibraryReviewScreen(),
         ),
       ),
@@ -112,7 +114,9 @@ void main() {
           sharedPreferencesProvider.overrideWithValue(prefs),
         ],
         child: MaterialApp(
-          theme: SwipifyTheme.darkTheme,
+          theme: SwipifyTheme.lightTheme,
+          darkTheme: SwipifyTheme.darkTheme,
+          themeMode: ThemeMode.dark,
           home: const LibraryReviewScreen(),
         ),
       ),

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:swipify/core/native_gallery_helper.dart';
 import 'package:swipify/core/providers/photo_provider.dart';
+import 'package:swipify/core/theme.dart';
 import 'package:swipify/features/swipe_deck/swipe_batch_finished_view.dart';
 
 void main() {
@@ -22,8 +23,11 @@ void main() {
             () => _SeededSwipeSessionNotifier(state),
           ),
         ],
-        child: const MaterialApp(
-          home: Scaffold(
+        child: MaterialApp(
+          theme: SwipifyTheme.lightTheme,
+          darkTheme: SwipifyTheme.darkTheme,
+          themeMode: ThemeMode.dark,
+          home: const Scaffold(
             body: SwipeBatchFinishedView(deckBusy: false),
           ),
         ),
@@ -59,8 +63,11 @@ void main() {
             () => _SeededSwipeSessionNotifier(state),
           ),
         ],
-        child: const MaterialApp(
-          home: Scaffold(
+        child: MaterialApp(
+          theme: SwipifyTheme.lightTheme,
+          darkTheme: SwipifyTheme.darkTheme,
+          themeMode: ThemeMode.dark,
+          home: const Scaffold(
             body: SwipeBatchFinishedView(deckBusy: false),
           ),
         ),

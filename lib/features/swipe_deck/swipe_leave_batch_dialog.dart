@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers/photo_provider.dart';
-import '../../core/theme.dart';
-
 /// Shown when the user tries to leave a batch with unsaved decisions.
 Future<void> showSwipeLeaveBatchDialog(
   BuildContext pageContext,
@@ -90,7 +88,7 @@ Future<void> showSwipeLeaveBatchDialog(
               }
 
               return AlertDialog(
-                backgroundColor: SwipifyTheme.surfaceContainerHigh,
+                backgroundColor: Theme.of(context).colorScheme.surfaceContainerHigh,
                 surfaceTintColor: Colors.transparent,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(20),
@@ -98,7 +96,7 @@ Future<void> showSwipeLeaveBatchDialog(
                 title: Text(
                   'Leave this batch?',
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: SwipifyTheme.onSurface,
+                        color: Theme.of(context).colorScheme.onSurface,
                         fontWeight: FontWeight.w700,
                       ),
                 ),
@@ -110,14 +108,14 @@ Future<void> showSwipeLeaveBatchDialog(
                       Text(
                         'You sorted $keepCount kept and $deleteCount to delete so far.',
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: SwipifyTheme.onSurfaceVariant,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
                       ),
                       const SizedBox(height: 12),
                       Text(
                         secondaryHint,
                         style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: SwipifyTheme.onSurfaceVariant,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant,
                             ),
                       ),
                     ],
@@ -142,22 +140,22 @@ Future<void> showSwipeLeaveBatchDialog(
                           },
                     child: Text(
                       'Discard',
-                      style: TextStyle(color: SwipifyTheme.secondary),
+                      style: TextStyle(color: Theme.of(context).colorScheme.secondary),
                     ),
                   ),
                   FilledButton(
                     onPressed: saving ? null : () => onPrimaryPressed(),
                     style: FilledButton.styleFrom(
-                      backgroundColor: SwipifyTheme.primary,
-                      foregroundColor: SwipifyTheme.onPrimary,
+                      backgroundColor: Theme.of(context).colorScheme.primary,
+                      foregroundColor: Theme.of(context).colorScheme.onPrimary,
                     ),
                     child: saving
-                        ? const SizedBox(
+                        ? SizedBox(
                             width: 22,
                             height: 22,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: SwipifyTheme.onPrimary,
+                              color: Theme.of(context).colorScheme.onPrimary,
                             ),
                           )
                         : Text(primaryLabel),

@@ -2,7 +2,6 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 
-import '../../core/theme.dart';
 
 /// Trash + check: apply pending deletes and leave (see [SwipeDeckBottomBar.onApplyDeletes]).
 class _TrashCheckIcon extends StatelessWidget {
@@ -10,7 +9,8 @@ class _TrashCheckIcon extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const SizedBox(
+    final scheme = Theme.of(context).colorScheme;
+    return SizedBox(
       width: 32,
       height: 32,
       child: Stack(
@@ -19,7 +19,7 @@ class _TrashCheckIcon extends StatelessWidget {
         children: [
           Icon(
             Icons.delete_outline,
-            color: SwipifyTheme.onSurfaceVariant,
+            color: scheme.onSurfaceVariant,
             size: 32,
           ),
           Positioned(
@@ -27,7 +27,7 @@ class _TrashCheckIcon extends StatelessWidget {
             bottom: -2,
             child: Icon(
               Icons.check_circle,
-              color: SwipifyTheme.primary,
+              color: scheme.primary,
               size: 16,
             ),
           ),
@@ -69,17 +69,17 @@ class SwipeDeckBottomBar extends StatelessWidget {
               filter: ImageFilter.blur(sigmaX: 24, sigmaY: 24),
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 16),
-                color: SwipifyTheme.surfaceContainerHigh.withValues(alpha: 0.6),
+                color: Theme.of(context).colorScheme.surfaceContainerHigh.withValues(alpha: 0.6),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
                     IconButton(
                       tooltip: 'Mark for delete',
                       onPressed: deckBusy ? null : onDelete,
-                      icon: const Icon(Icons.close,
-                          color: SwipifyTheme.secondary, size: 32),
+                      icon: Icon(Icons.close,
+                          color: Theme.of(context).colorScheme.secondary, size: 32),
                       style: IconButton.styleFrom(
-                        backgroundColor: SwipifyTheme.secondaryContainer
+                        backgroundColor: Theme.of(context).colorScheme.secondaryContainer
                             .withValues(alpha: 0.3),
                         padding: const EdgeInsets.all(16),
                       ),
@@ -93,7 +93,7 @@ class SwipeDeckBottomBar extends StatelessWidget {
                       icon: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const _TrashCheckIcon(),
+                          _TrashCheckIcon(),
                           if (pendingDeleteCount > 0) ...[
                             const SizedBox(height: 4),
                             Text(
@@ -102,7 +102,7 @@ class SwipeDeckBottomBar extends StatelessWidget {
                                   .textTheme
                                   .labelSmall
                                   ?.copyWith(
-                                    color: SwipifyTheme.onSurfaceVariant,
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                                     fontSize: 11,
                                   ),
                             ),
@@ -110,17 +110,17 @@ class SwipeDeckBottomBar extends StatelessWidget {
                         ],
                       ),
                       style: IconButton.styleFrom(
-                        backgroundColor: SwipifyTheme.surfaceContainerHighest
+                        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest
                             .withValues(alpha: 0.3),
                         padding: const EdgeInsets.all(16),
                       ),
                     ),
                     IconButton(
                       onPressed: deckBusy ? null : onKeep,
-                      icon: const Icon(Icons.skip_next,
-                          color: SwipifyTheme.primary, size: 32),
+                      icon: Icon(Icons.skip_next,
+                          color: Theme.of(context).colorScheme.primary, size: 32),
                       style: IconButton.styleFrom(
-                        backgroundColor: SwipifyTheme.primaryContainer
+                        backgroundColor: Theme.of(context).colorScheme.primaryContainer
                             .withValues(alpha: 0.3),
                         padding: const EdgeInsets.all(16),
                       ),

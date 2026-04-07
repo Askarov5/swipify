@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:swipify/core/native_gallery_helper.dart';
 import 'package:swipify/core/providers/photo_provider.dart';
 import 'package:swipify/core/providers/preferences_provider.dart';
+import 'package:swipify/core/theme.dart';
 import 'package:swipify/features/swipe_deck/swipe_deck_stack.dart';
 
 import 'support/gallery_channel_mock.dart';
@@ -38,6 +39,9 @@ void main() {
             sharedPreferencesProvider.overrideWithValue(prefs),
           ],
           child: MaterialApp(
+            theme: SwipifyTheme.lightTheme,
+            darkTheme: SwipifyTheme.darkTheme,
+            themeMode: ThemeMode.dark,
             home: _SwipeDeckHarness(photos: [photo]),
           ),
         ),
@@ -78,6 +82,9 @@ void main() {
             sharedPreferencesProvider.overrideWithValue(prefs),
           ],
           child: MaterialApp(
+            theme: SwipifyTheme.lightTheme,
+            darkTheme: SwipifyTheme.darkTheme,
+            themeMode: ThemeMode.dark,
             home: _SwipeDeckHarness(photos: [p1, p2]),
           ),
         ),
@@ -133,6 +140,9 @@ void main() {
             sharedPreferencesProvider.overrideWithValue(prefs),
           ],
           child: MaterialApp(
+            theme: SwipifyTheme.lightTheme,
+            darkTheme: SwipifyTheme.darkTheme,
+            themeMode: ThemeMode.dark,
             home: _SwipeDeckHarness(photos: [video, photo]),
           ),
         ),

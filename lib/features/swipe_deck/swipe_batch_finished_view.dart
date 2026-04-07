@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/providers/photo_provider.dart';
-import '../../core/theme.dart';
-
 /// Shown when the deck has no remaining cards (batch complete or awaiting commit).
 class SwipeBatchFinishedView extends ConsumerWidget {
   final bool deckBusy;
@@ -15,6 +13,7 @@ class SwipeBatchFinishedView extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
     final sessionState = ref.watch(swipeSessionNotifierProvider);
     final isCommitted = sessionState.isCommitted;
     final hasDeletes = sessionState.deleteCount > 0;
@@ -27,7 +26,7 @@ class SwipeBatchFinishedView extends ConsumerWidget {
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(isCommitted ? Icons.check_circle : Icons.celebration,
-              color: SwipifyTheme.primary, size: 64),
+              color: scheme.primary, size: 64),
           const SizedBox(height: 16),
           Text(isCommitted ? 'Saved!' : 'Batch Finished!',
               style:
@@ -47,7 +46,7 @@ class SwipeBatchFinishedView extends ConsumerWidget {
                 icon: const Icon(Icons.undo, size: 20),
                 label: const Text('Undo last'),
                 style: TextButton.styleFrom(
-                  foregroundColor: SwipifyTheme.onSurfaceVariant,
+                  foregroundColor: scheme.onSurfaceVariant,
                 ),
               ),
               const SizedBox(height: 8),
@@ -59,7 +58,7 @@ class SwipeBatchFinishedView extends ConsumerWidget {
                   'Your keeps are saved. Some items could not be deleted from the library.',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: SwipifyTheme.secondary,
+                        color: scheme.secondary,
                       ),
                 ),
               ),
@@ -83,8 +82,8 @@ class SwipeBatchFinishedView extends ConsumerWidget {
                 icon: const Icon(Icons.delete_forever),
                 label: Text('Retry delete (${sessionState.deleteCount})'),
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: SwipifyTheme.secondary,
-                  foregroundColor: Colors.white,
+                  backgroundColor: scheme.secondary,
+                  foregroundColor: scheme.onSecondary,
                   padding:
                       const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 ),
@@ -118,8 +117,9 @@ class SwipeBatchFinishedView extends ConsumerWidget {
                     : 'Finish Batch'),
                 style: ElevatedButton.styleFrom(
                   backgroundColor:
-                      hasDeletes ? SwipifyTheme.secondary : SwipifyTheme.primary,
-                  foregroundColor: Colors.white,
+                      hasDeletes ? scheme.secondary : scheme.primary,
+                  foregroundColor:
+                      hasDeletes ? scheme.onSecondary : scheme.onPrimary,
                   padding:
                       const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                 ),
@@ -130,8 +130,8 @@ class SwipeBatchFinishedView extends ConsumerWidget {
                 ref.read(swipeSessionNotifierProvider.notifier).discardSession();
                 Navigator.pop(context);
               },
-              child: const Text('Cancel / Discard',
-                  style: TextStyle(color: SwipifyTheme.onSurfaceVariant)),
+              child: Text('Cancel / Discard',
+                  style: TextStyle(color: scheme.onSurfaceVariant)),
             )
           ] else ...[
             ElevatedButton(
@@ -139,8 +139,8 @@ class SwipeBatchFinishedView extends ConsumerWidget {
                 Navigator.pop(context);
               },
               style: ElevatedButton.styleFrom(
-                backgroundColor: SwipifyTheme.primaryContainer,
-                foregroundColor: SwipifyTheme.onSurface,
+                backgroundColor: scheme.primaryContainer,
+                foregroundColor: scheme.onSurface,
               ),
               child: const Text('Back to Library'),
             )

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:swipify/core/providers/preferences_provider.dart';
+import 'package:swipify/core/theme.dart';
 import 'package:swipify/features/permissions/onboarding_screen.dart';
 
 import 'support/gallery_channel_mock.dart';
@@ -34,8 +35,11 @@ void main() {
         overrides: [
           sharedPreferencesProvider.overrideWithValue(prefs),
         ],
-        child: const MaterialApp(
-          home: OnboardingScreen(),
+        child: MaterialApp(
+          theme: SwipifyTheme.lightTheme,
+          darkTheme: SwipifyTheme.darkTheme,
+          themeMode: ThemeMode.dark,
+          home: const OnboardingScreen(),
         ),
       ),
     );

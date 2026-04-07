@@ -37,7 +37,9 @@ class SwipifyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Swipify',
-      theme: SwipifyTheme.darkTheme,
+      theme: SwipifyTheme.lightTheme,
+      darkTheme: SwipifyTheme.darkTheme,
+      themeMode: ThemeMode.system,
       home: initialRouteIsLibrary
           ? const LibraryReviewScreen()
           : const OnboardingScreen(),

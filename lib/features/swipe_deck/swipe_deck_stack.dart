@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 
 import '../../core/native_gallery_helper.dart';
 import '../../core/providers/photo_provider.dart';
-import '../../core/theme.dart';
 import 'swipify_media_widget.dart';
 
 enum SwipeDeckMotion { idle, rebounding, flyingOff }
@@ -67,7 +66,7 @@ class SwipeDeckStack extends StatelessWidget {
             width: double.infinity,
             height: double.infinity,
             decoration: BoxDecoration(
-              color: SwipifyTheme.surfaceContainerHighest,
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
               borderRadius: BorderRadius.circular(24),
               boxShadow: [
                 if (isFrontCard)
@@ -127,9 +126,9 @@ class SwipeDeckStack extends StatelessWidget {
                       (isDragging || motion == SwipeDeckMotion.flyingOff))
                     Container(
                       color: swipeKeepTint
-                          ? SwipifyTheme.primary.withValues(
+                          ? Theme.of(context).colorScheme.primary.withValues(
                               alpha: (dragOffset.dx.abs() / 300).clamp(0.0, 0.4))
-                          : SwipifyTheme.secondary.withValues(
+                          : Theme.of(context).colorScheme.secondary.withValues(
                               alpha: (dragOffset.dx.abs() / 300).clamp(0.0, 0.4)),
                     ),
                 ],

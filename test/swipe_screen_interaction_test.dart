@@ -54,7 +54,9 @@ void main() {
           sharedPreferencesProvider.overrideWithValue(prefs),
         ],
         child: MaterialApp(
-          theme: SwipifyTheme.darkTheme,
+          theme: SwipifyTheme.lightTheme,
+          darkTheme: SwipifyTheme.darkTheme,
+          themeMode: ThemeMode.dark,
           home: SwipeScreen(batch: batch),
         ),
       ),
@@ -167,10 +169,12 @@ void main() {
           overrides: [
             sharedPreferencesProvider.overrideWithValue(prefs),
           ],
-          child: MaterialApp(
-            theme: SwipifyTheme.darkTheme,
-            home: const LibraryReviewScreen(),
-          ),
+        child: MaterialApp(
+          theme: SwipifyTheme.lightTheme,
+          darkTheme: SwipifyTheme.darkTheme,
+          themeMode: ThemeMode.dark,
+          home: const LibraryReviewScreen(),
+        ),
         ),
       );
       await tester.pump();
@@ -234,10 +238,12 @@ void main() {
           overrides: [
             sharedPreferencesProvider.overrideWithValue(prefs),
           ],
-          child: MaterialApp(
-            theme: SwipifyTheme.darkTheme,
-            home: const LibraryReviewScreen(),
-          ),
+        child: MaterialApp(
+          theme: SwipifyTheme.lightTheme,
+          darkTheme: SwipifyTheme.darkTheme,
+          themeMode: ThemeMode.dark,
+          home: const LibraryReviewScreen(),
+        ),
         ),
       );
       await tester.pump();

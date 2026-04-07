@@ -4,8 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/providers/impact_stats_provider.dart';
 import '../../core/providers/photo_provider.dart';
 import '../../core/providers/preferences_provider.dart';
-import '../../core/theme.dart';
-
 /// When [embedded] is true, only scrollable content is returned (for use inside a parent shell with its own [Scaffold]/[AppBar]).
 class StatsScreen extends ConsumerWidget {
   const StatsScreen({super.key, this.embedded = false});
@@ -16,6 +14,7 @@ class StatsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final scheme = Theme.of(context).colorScheme;
     final impact = ref.watch(impactStatsProvider);
     final reviewedIds = ref.watch(reviewedIdsProvider);
     final allMediaAsync = ref.watch(allMediaProvider);
@@ -52,9 +51,9 @@ class StatsScreen extends ConsumerWidget {
                   child: CircularProgressIndicator(
                     value: libraryProgress,
                     strokeWidth: 8,
-                    backgroundColor: SwipifyTheme.surfaceContainerHighest,
-                    valueColor: const AlwaysStoppedAnimation<Color>(
-                      SwipifyTheme.primary,
+                    backgroundColor: scheme.surfaceContainerHighest,
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      scheme.primary,
                     ),
                     strokeCap: StrokeCap.round,
                   ),
@@ -66,7 +65,7 @@ class StatsScreen extends ConsumerWidget {
                       '$removed',
                       style: Theme.of(context).textTheme.displayLarge?.copyWith(
                             fontSize: 64,
-                            color: SwipifyTheme.primary,
+                            color: scheme.primary,
                           ),
                     ),
                     Text(
@@ -90,13 +89,13 @@ class StatsScreen extends ConsumerWidget {
                 context,
                 'Photos Deleted',
                 '${impact.photosDeletedTotal}',
-                SwipifyTheme.secondary,
+                scheme.secondary,
               ),
               _buildStatCard(
                 context,
                 'Videos Deleted',
                 '${impact.videosDeletedTotal}',
-                SwipifyTheme.secondary,
+                scheme.secondary,
               ),
             ],
           ),
@@ -108,13 +107,13 @@ class StatsScreen extends ConsumerWidget {
                 context,
                 'Batches Cleaned',
                 '$batchesCleaned',
-                SwipifyTheme.primary,
+                scheme.primary,
               ),
               _buildStatCard(
                 context,
                 'Commits Done',
                 '${impact.commitsCompletedTotal}',
-                SwipifyTheme.primary,
+                scheme.primary,
               ),
             ],
           ),
@@ -149,7 +148,7 @@ class StatsScreen extends ConsumerWidget {
       width: 140,
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: SwipifyTheme.surfaceContainerLow,
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(24),
       ),
       child: Column(

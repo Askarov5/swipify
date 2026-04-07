@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:swipify/core/theme.dart';
 import 'package:swipify/features/swipe_deck/swipe_deck_bottom_bar.dart';
 
 void main() {
@@ -12,6 +13,9 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          theme: SwipifyTheme.lightTheme,
+          darkTheme: SwipifyTheme.darkTheme,
+          themeMode: ThemeMode.dark,
           home: Scaffold(
             body: SwipeDeckBottomBar(
               deckBusy: false,
@@ -44,6 +48,9 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          theme: SwipifyTheme.lightTheme,
+          darkTheme: SwipifyTheme.darkTheme,
+          themeMode: ThemeMode.dark,
           home: Scaffold(
             body: SwipeDeckBottomBar(
               deckBusy: true,
@@ -72,6 +79,9 @@ void main() {
 
       await tester.pumpWidget(
         MaterialApp(
+          theme: SwipifyTheme.lightTheme,
+          darkTheme: SwipifyTheme.darkTheme,
+          themeMode: ThemeMode.dark,
           home: Scaffold(
             body: SwipeDeckBottomBar(
               deckBusy: false,
@@ -95,6 +105,9 @@ void main() {
         (tester) async {
       await tester.pumpWidget(
         MaterialApp(
+          theme: SwipifyTheme.lightTheme,
+          darkTheme: SwipifyTheme.darkTheme,
+          themeMode: ThemeMode.dark,
           home: Scaffold(
             body: SwipeDeckBottomBar(
               deckBusy: false,

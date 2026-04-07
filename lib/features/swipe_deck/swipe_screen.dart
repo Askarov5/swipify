@@ -7,7 +7,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/native_gallery_helper.dart';
 import '../../core/providers/photo_provider.dart';
-import '../../core/theme.dart';
 import 'swipe_batch_finished_view.dart';
 import 'swipe_deck_bottom_bar.dart';
 import 'swipe_deck_progress_overlay.dart';
@@ -294,7 +293,8 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
           backgroundColor: Colors.transparent,
           elevation: 0,
           leading: IconButton(
-            icon: const Icon(Icons.close, color: SwipifyTheme.onSurfaceVariant),
+            icon: Icon(Icons.close,
+                color: Theme.of(context).colorScheme.onSurfaceVariant),
             onPressed: () => _onClosePressed(needsExitGuard),
           ),
           title: Text(
@@ -307,8 +307,8 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
               IconButton(
                 tooltip:
                     canUndo ? 'Undo last swipe' : 'Nothing to undo yet',
-                icon: const Icon(Icons.settings_backup_restore,
-                    color: SwipifyTheme.onSurfaceVariant),
+                icon: Icon(Icons.settings_backup_restore,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant),
                 onPressed: canUndo
                     ? () {
                         ref
@@ -321,7 +321,7 @@ class _SwipeScreenState extends ConsumerState<SwipeScreen>
         ),
         body: Stack(
           children: [
-            Container(color: SwipifyTheme.surface),
+            Container(color: Theme.of(context).colorScheme.surface),
             Builder(
               builder: (context) {
                 if (initialAssets.isEmpty) {

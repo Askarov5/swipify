@@ -1,13 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:swipify/core/theme.dart';
 import 'package:swipify/features/swipe_deck/swipe_deck_progress_overlay.dart';
 
 void main() {
   group('SwipeDeckProgressOverlay', () {
     testWidgets('shows DELETE and KEEP labels', (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
+        MaterialApp(
+          theme: SwipifyTheme.lightTheme,
+          darkTheme: SwipifyTheme.darkTheme,
+          themeMode: ThemeMode.dark,
+          home: const Scaffold(
             body: SwipeDeckProgressOverlay(progress: 0.42),
           ),
         ),
@@ -19,8 +23,11 @@ void main() {
 
     testWidgets('binds LinearProgressIndicator to progress', (tester) async {
       await tester.pumpWidget(
-        const MaterialApp(
-          home: Scaffold(
+        MaterialApp(
+          theme: SwipifyTheme.lightTheme,
+          darkTheme: SwipifyTheme.darkTheme,
+          themeMode: ThemeMode.dark,
+          home: const Scaffold(
             body: SwipeDeckProgressOverlay(progress: 0.75),
           ),
         ),

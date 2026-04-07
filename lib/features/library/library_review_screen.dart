@@ -2,7 +2,6 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
-import '../../core/theme.dart';
 import '../swipe_deck/swipe_screen.dart';
 import '../dashboard/stats_screen.dart';
 import '../email/email_coming_soon_screen.dart';
@@ -51,7 +50,7 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: SwipifyTheme.surface.withValues(alpha: 0.8),
+        backgroundColor: Theme.of(context).colorScheme.surface.withValues(alpha: 0.8),
         elevation: 0,
         surfaceTintColor: Colors.transparent,
         title: _selectedTab == _MainNavTab.photos
@@ -59,7 +58,7 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
                 'Swipify Photos & Videos',
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                       fontWeight: FontWeight.w600,
-                      color: SwipifyTheme.primary,
+                      color: Theme.of(context).colorScheme.primary,
                     ),
               )
             : Text(
@@ -112,12 +111,12 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
           children: [
             Container(
               padding: const EdgeInsets.all(24),
-              decoration: const BoxDecoration(
-                color: SwipifyTheme.surfaceContainerHigh,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHigh,
                 shape: BoxShape.circle,
               ),
-              child: const Icon(Icons.no_photography,
-                  size: 64, color: SwipifyTheme.primary),
+              child: Icon(Icons.no_photography,
+                  size: 64, color: Theme.of(context).colorScheme.primary),
             ),
             const SizedBox(height: 32),
             Text(
@@ -125,7 +124,7 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                     fontWeight: FontWeight.bold,
-                    color: SwipifyTheme.onSurface,
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
             ),
             const SizedBox(height: 16),
@@ -135,7 +134,7 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
                   : 'Swipify is completely private and runs on your device. Allow access to your photo library so you can review and declutter.\n\nWithout access, this screen stays empty.',
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                    color: SwipifyTheme.onSurfaceVariant,
+                    color: Theme.of(context).colorScheme.onSurfaceVariant,
                   ),
             ),
             const SizedBox(height: 48),
@@ -143,8 +142,8 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
               width: double.infinity,
               child: ElevatedButton.icon(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: SwipifyTheme.primary,
-                  foregroundColor: SwipifyTheme.onPrimary,
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                  foregroundColor: Theme.of(context).colorScheme.onPrimary,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(32),
@@ -285,11 +284,11 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
           children: [
             Container(
               padding: const EdgeInsets.all(20),
-              decoration: const BoxDecoration(
-                color: SwipifyTheme.surfaceContainerHigh,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.surfaceContainerHigh,
                 shape: BoxShape.circle,
               ),
-              child: Icon(icon, size: 48, color: SwipifyTheme.primary),
+              child: Icon(icon, size: 48, color: Theme.of(context).colorScheme.primary),
             ),
             const SizedBox(height: 24),
             Text(
@@ -297,7 +296,7 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
               textAlign: TextAlign.center,
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.bold,
-                    color: SwipifyTheme.onSurface,
+                    color: Theme.of(context).colorScheme.onSurface,
                   ),
             ),
             const SizedBox(height: 12),
@@ -307,7 +306,7 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
                 body,
                 textAlign: TextAlign.center,
                 style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: SwipifyTheme.onSurfaceVariant,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
                     ),
               ),
             ),
@@ -322,7 +321,7 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: SwipifyTheme.surfaceContainerHigh,
+        color: Theme.of(context).colorScheme.surfaceContainerHigh,
         borderRadius: BorderRadius.circular(8),
       ),
       child: Row(
@@ -333,7 +332,7 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 color: mode == GroupingMode.month
-                    ? SwipifyTheme.surfaceContainerHighest
+                    ? Theme.of(context).colorScheme.surfaceContainerHighest
                     : Colors.transparent,
                 borderRadius: BorderRadius.circular(6),
               ),
@@ -341,8 +340,8 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
                 'Month',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       color: mode == GroupingMode.month
-                          ? SwipifyTheme.primary
-                          : SwipifyTheme.onSurfaceVariant,
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
                       fontWeight: mode == GroupingMode.month
                           ? FontWeight.bold
                           : FontWeight.normal,
@@ -356,7 +355,7 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               decoration: BoxDecoration(
                 color: mode == GroupingMode.date
-                    ? SwipifyTheme.surfaceContainerHighest
+                    ? Theme.of(context).colorScheme.surfaceContainerHighest
                     : Colors.transparent,
                 borderRadius: BorderRadius.circular(6),
               ),
@@ -364,8 +363,8 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
                 'Date',
                 style: Theme.of(context).textTheme.labelSmall?.copyWith(
                       color: mode == GroupingMode.date
-                          ? SwipifyTheme.primary
-                          : SwipifyTheme.onSurfaceVariant,
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.onSurfaceVariant,
                       fontWeight: mode == GroupingMode.date
                           ? FontWeight.bold
                           : FontWeight.normal,
@@ -390,7 +389,7 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
             padding: const EdgeInsets.symmetric(vertical: 8),
             decoration: BoxDecoration(
               color: isActive
-                  ? SwipifyTheme.surfaceContainerHigh
+                  ? Theme.of(context).colorScheme.surfaceContainerHigh
                   : Colors.transparent,
               borderRadius: BorderRadius.circular(24),
             ),
@@ -399,8 +398,8 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
               label,
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
                     color: isActive
-                        ? SwipifyTheme.primary
-                        : SwipifyTheme.onSurfaceVariant,
+                        ? Theme.of(context).colorScheme.primary
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
                     fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
                   ),
             ),
@@ -412,7 +411,7 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: SwipifyTheme.surfaceContainerLow,
+        color: Theme.of(context).colorScheme.surfaceContainerLow,
         borderRadius: BorderRadius.circular(32),
       ),
       child: Row(
@@ -450,7 +449,7 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
         child: Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: SwipifyTheme.surfaceContainerLow,
+            color: Theme.of(context).colorScheme.surfaceContainerLow,
             borderRadius: BorderRadius.circular(24),
             border: Border.all(color: Colors.transparent),
           ),
@@ -464,7 +463,7 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
                     width: 64,
                     height: 64,
                     child: ColoredBox(
-                      color: SwipifyTheme.surfaceContainerHighest,
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
                       child: _BatchThumbnailCollage(
                         candidates: batch.assets.take(4).toList(),
                         actionable: actionable,
@@ -480,10 +479,10 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
                   children: [
                     Text(
                       title,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontWeight: FontWeight.bold,
                           fontSize: 16,
-                          color: SwipifyTheme.onSurface),
+                          color: Theme.of(context).colorScheme.onSurface),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -494,7 +493,7 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: SwipifyTheme.primary,
+                          color: Theme.of(context).colorScheme.primary,
                         ),
                       ),
                     ],
@@ -502,18 +501,18 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
                     Row(
                       children: [
                         if (!actionable)
-                          const Padding(
-                            padding: EdgeInsets.only(right: 4.0),
+                          Padding(
+                            padding: const EdgeInsets.only(right: 4.0),
                             child: Icon(Icons.check_circle,
-                                size: 14, color: SwipifyTheme.primary),
+                                size: 14, color: Theme.of(context).colorScheme.primary),
                           ),
                         Text(
                           actionable ? subtitle : 'Cleaned',
                           style: TextStyle(
                             fontSize: 12,
                             color: actionable
-                                ? SwipifyTheme.onSurfaceVariant
-                                : SwipifyTheme.primary,
+                                ? Theme.of(context).colorScheme.onSurfaceVariant
+                                : Theme.of(context).colorScheme.primary,
                           ),
                         ),
                       ],
@@ -522,9 +521,9 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
                       const SizedBox(height: 6),
                       LinearProgressIndicator(
                         value: progress,
-                        backgroundColor: SwipifyTheme.surfaceContainerHighest,
-                        valueColor: const AlwaysStoppedAnimation<Color>(
-                            SwipifyTheme.primary),
+                        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                        valueColor: AlwaysStoppedAnimation<Color>(
+                            Theme.of(context).colorScheme.primary),
                         minHeight: 4,
                         borderRadius: BorderRadius.circular(2),
                       ),
@@ -535,8 +534,8 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
               actionable
                   ? ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: SwipifyTheme.surfaceContainerHighest,
-                        foregroundColor: SwipifyTheme.primary,
+                        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                        foregroundColor: Theme.of(context).colorScheme.primary,
                         elevation: 0,
                         padding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 8),
@@ -557,8 +556,8 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
                     )
                   : ElevatedButton.icon(
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: SwipifyTheme.surfaceContainerHighest,
-                        foregroundColor: SwipifyTheme.onSurfaceVariant,
+                        backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                        foregroundColor: Theme.of(context).colorScheme.onSurfaceVariant,
                         elevation: 0,
                         padding: const EdgeInsets.symmetric(
                             horizontal: 16, vertical: 8),
@@ -575,8 +574,8 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
                       label: const Icon(Icons.refresh, size: 16),
                     ),
               const SizedBox(width: 8),
-              const Icon(Icons.chevron_right,
-                  color: SwipifyTheme.onSurfaceVariant),
+              Icon(Icons.chevron_right,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant),
             ],
           ),
         ),
@@ -586,11 +585,11 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
 
   Widget _buildBottomNav(BuildContext context) {
     return Container(
-      decoration: const BoxDecoration(
-        color: SwipifyTheme.surface,
-        borderRadius: BorderRadius.only(
+      decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: const BorderRadius.only(
             topLeft: Radius.circular(32), topRight: Radius.circular(32)),
-        boxShadow: [
+        boxShadow: const [
           BoxShadow(
             color: Colors.black45,
             blurRadius: 24,
@@ -642,7 +641,7 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
           decoration: BoxDecoration(
             color: isActive
-                ? SwipifyTheme.surfaceContainerHigh
+                ? Theme.of(context).colorScheme.surfaceContainerHigh
                 : Colors.transparent,
             borderRadius: BorderRadius.circular(16),
           ),
@@ -652,8 +651,8 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
               Icon(
                 icon,
                 color: isActive
-                    ? SwipifyTheme.primary
-                    : SwipifyTheme.primary.withValues(alpha: 0.4),
+                    ? Theme.of(context).colorScheme.primary
+                    : Theme.of(context).colorScheme.primary.withValues(alpha: 0.4),
               ),
               const SizedBox(height: 4),
               Text(
@@ -661,8 +660,8 @@ class _LibraryReviewScreenState extends ConsumerState<LibraryReviewScreen>
                 style: TextStyle(
                   fontSize: 10,
                   color: isActive
-                      ? SwipifyTheme.primary
-                      : SwipifyTheme.primary.withValues(alpha: 0.4),
+                      ? Theme.of(context).colorScheme.primary
+                      : Theme.of(context).colorScheme.primary.withValues(alpha: 0.4),
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -684,8 +683,8 @@ class _BatchThumbnailCollage extends StatelessWidget {
   final List<SwipifyPhoto> candidates;
   final bool actionable;
 
-  Color get _placeholderColor => actionable
-      ? SwipifyTheme.primaryContainer.withValues(alpha: 0.5)
+  Color _placeholderColor(BuildContext context) => actionable
+      ? Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.5)
       : Colors.grey.withValues(alpha: 0.2);
 
   @override
@@ -697,13 +696,13 @@ class _BatchThumbnailCollage extends StatelessWidget {
       physics: const NeverScrollableScrollPhysics(),
       padding: EdgeInsets.zero,
       shrinkWrap: true,
-      children: List.generate(4, _buildCell),
+      children: List.generate(4, (i) => _buildCell(context, i)),
     );
   }
 
-  Widget _buildCell(int index) {
+  Widget _buildCell(BuildContext context, int index) {
     if (index >= candidates.length) {
-      return ColoredBox(color: _placeholderColor);
+      return ColoredBox(color: _placeholderColor(context));
     }
     final photo = candidates[index];
     return FutureBuilder<Uint8List?>(
@@ -711,7 +710,7 @@ class _BatchThumbnailCollage extends StatelessWidget {
       builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return ColoredBox(
-            color: SwipifyTheme.surfaceContainerHighest,
+            color: Theme.of(context).colorScheme.surfaceContainerHighest,
             child: const Center(
               child: SizedBox(
                 width: 14,
@@ -723,7 +722,7 @@ class _BatchThumbnailCollage extends StatelessWidget {
         }
         final data = snapshot.data;
         if (snapshot.hasError || data == null) {
-          return ColoredBox(color: _placeholderColor);
+          return ColoredBox(color: _placeholderColor(context));
         }
         return Image.memory(
           data,
